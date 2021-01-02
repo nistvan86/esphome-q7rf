@@ -158,11 +158,11 @@ void Q7RFSwitch::setup() {
     return;
   }
 
-  this->initialized = true;
+  this->initialized_ = true;
 }
 
 void Q7RFSwitch::write_state(bool state) {
-  if (this->initialized) {
+  if (this->initialized_) {
     // TODO: send state toggle
     this->publish_state(state);
   }
@@ -171,10 +171,10 @@ void Q7RFSwitch::write_state(bool state) {
 void Q7RFSwitch::dump_config() {
   ESP_LOGCONFIG(TAG, "Q7RF:");
   ESP_LOGCONFIG(TAG, "  CC1101 CS Pin: %u", this->cs_->get_pin());
-  ESP_LOGCONFIG(TAG, "  Q7RF Device ID: 0x%04x", this->q7rf_device_id);
+  ESP_LOGCONFIG(TAG, "  Q7RF Device ID: 0x%04x", this->q7rf_device_id_);
 }
 
-void Q7RFSwitch::set_q7rf_device_id(uint16_t id) { this->q7rf_device_id = id; }
+void Q7RFSwitch::set_q7rf_device_id(uint16_t id) { this->q7rf_device_id_ = id; }
 
 }  // namespace q7rf
 }  // namespace esphome
