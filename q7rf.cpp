@@ -33,12 +33,29 @@ static const uint8_t CREG_FREND0 = 0x22;
 static const uint8_t CREG_PATABLE_BURST_WRITE = 0x7e;
 static const uint8_t CREG_PATABLE_BURST_READ = 0xfe;
 
+/* Each symbol takes 220us. Computherm/Delta Q7RF uses PWM modulation.
+   Every data bit is encoded as 3 bit inside the buffer.
+   001 = 1, 011 = 0, 111000111 = preamble */
 static const uint8_t Q7RF_REG_CONFIG[] = {
-    CREG_FIFOTHR, 0x00, CREG_PKTLEN,  0x3d, CREG_PKTCTRL1, 0x00, CREG_PKTCTRL0, 0x01, CREG_FREQ2,   0x21,
-    CREG_FREQ1,   0x65, CREG_FREQ0,   0x44, CREG_MDMCFG4,  0xF7, CREG_MDMCFG3,  0x6B, CREG_MDMCFG2, 0x30,
-    CREG_MDMCFG1, 0x00, CREG_MDMCFG0, 0xF8, CREG_MCSM0,    0x10, CREG_FOCCFG,   0x00, CREG_FREND0,  0x11};
+    CREG_FIFOTHR,  0x00,  // TX FIFO length = 61, others default
+    CREG_PKTLEN,   0x3d,  // 61 byte packets
+    CREG_PKTCTRL1, 0x00,  // Disable RSSI/LQ payload sending, no address check
+    CREG_PKTCTRL0, 0x01,  // variable packet length, no CRC calculation
+    CREG_FREQ2,    0x21,  // FREQ2, FREQ=0x216544 => 2.188.612 * (26 MHz OSC / 2^16) ~= 868.285 MHz
+    CREG_FREQ1,    0x65,  // ^FREQ1
+    CREG_FREQ0,    0x44,  // ^FREQ0
+    CREG_MDMCFG4,  0xf7,  // baud exponent = 7 (lower 4 bits)
+    CREG_MDMCFG3,  0x6B,  // baud mantissa = 107 -> (((256+107) * 2^7)/2^28) * 26 MHz OSC = 4.5 kBaud
+    CREG_MDMCFG2,  0x30,  // DC filter on, ASK/OOK modulation, no manchester coding, no preamble/sync
+    CREG_MDMCFG1,  0x00,  // no FEC, channel spacing exponent = 0 (last two bit)
+    CREG_MDMCFG0,  0xf8,  // channel spacing mantissa = 248 -> 6.000.000 / 2^18 * (256 + 248) * 2^0 ~= 50kHz
+    CREG_MCSM0,    0x10,  // autocalibrate synthesizer when switching from IDLE to RX/TX state
+    CREG_FOCCFG,   0x00,  // ASK/OOK has no frequency offset compensation
+    CREG_FREND0,   0x11   // ASK/OOK PATABLE (power level) settings = up to index 1
+};
 
-static const uint8_t Q7RF_PA_TABLE[] = {0x00, 0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+// 0xc0 = +12dB max power setting
+static const uint8_t Q7RF_PA_TABLE[] = {0x00, 0xc0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
 
 bool Q7RFSwitch::reset_cc() {
   // Chip reset sequence. CS wiggle (CC1101 manual page 45)
@@ -49,9 +66,7 @@ bool Q7RFSwitch::reset_cc() {
   this->disable();
   delayMicroseconds(41);
 
-  this->enable();
-  this->transfer_byte(CMD_SRES);
-  this->disable();
+  this->send_cc_cmd(CMD_SRES);
   ESP_LOGD(TAG, "Issued CC1101 reset sequence.");
 
   // Read part number and version
@@ -105,6 +120,12 @@ bool Q7RFSwitch::reset_cc() {
   }
 
   return true;
+}
+
+void Q7RFSwitch::send_cc_cmd(uint8_t cmd) {
+  this->enable();
+  this->transfer_byte(cmd);
+  this->disable();
 }
 
 void Q7RFSwitch::read_cc_register(uint8_t reg, uint8_t *value) {

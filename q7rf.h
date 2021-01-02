@@ -11,11 +11,13 @@ class Q7RFSwitch : public switch_::Switch,
                    public Component,
                    public spi::SPIDevice<spi::BIT_ORDER_MSB_FIRST, spi::CLOCK_POLARITY_LOW, spi::CLOCK_PHASE_LEADING,
                                          spi::DATA_RATE_1KHZ> {
- private:
-  bool initialized = false;
-  uint16_t q7rf_device_id;
+ protected:
+  bool initialized_ = false;
+  uint16_t q7rf_device_id_ = 0x6ed5;
 
+ private:
   bool reset_cc();
+  void send_cc_cmd(uint8_t cmd);
   void read_cc_register(uint8_t reg, uint8_t* value);
   void read_cc_config_register(uint8_t reg, uint8_t* value);
   void write_cc_register(uint8_t reg, uint8_t* value);
