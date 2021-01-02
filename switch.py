@@ -6,13 +6,16 @@ from esphome.const import CONF_ID
 
 DEPENDENCIES = ["spi"]
 
+CONF_Q7RF_DEVICE_ID = "q7rf_device_id"
+
 q7rf_ns = cg.esphome_ns.namespace("q7rf")
-Q7RF = q7rf_ns.class_("Q7RF", switch.Switch, cg.Component, spi.SPIDevice)
+Q7RF_SWITCH = q7rf_ns.class_("Q7RFSwitch", switch.Switch, cg.Component, spi.SPIDevice)
 
 CONFIG_SCHEMA = (
-    switch.SWITCH_SCHEMA.extend({cv.GenerateID(): cv.declare_id(Q7RF)})
+    switch.SWITCH_SCHEMA.extend({cv.GenerateID(): cv.declare_id(Q7RF_SWITCH)})
     .extend(cv.COMPONENT_SCHEMA)
     .extend(spi.spi_device_schema(cs_pin_required=True))
+    .extend(cv.Schema({cv.Required(CONF_Q7RF_DEVICE_ID): cv.hex_uint16_t}))
 )
 
 
@@ -21,3 +24,5 @@ def to_code(config):
     yield cg.register_component(var, config)
     yield switch.register_switch(var, config)
     yield spi.register_spi_device(var, config)
+
+    cg.add(var.set_q7rf_device_id(config[CONF_Q7RF_DEVICE_ID]))

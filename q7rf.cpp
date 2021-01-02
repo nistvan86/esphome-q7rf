@@ -40,7 +40,7 @@ static const uint8_t Q7RF_REG_CONFIG[] = {
 
 static const uint8_t Q7RF_PA_TABLE[] = {0x00, 0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
 
-bool Q7RF::reset_cc() {
+bool Q7RFSwitch::reset_cc() {
   // Chip reset sequence. CS wiggle (CC1101 manual page 45)
   this->disable();
   delayMicroseconds(5);
@@ -98,7 +98,7 @@ bool Q7RF::reset_cc() {
 
   for (int i = 0; i < sizeof(Q7RF_PA_TABLE); i++) {
     if (pa_table[i] != Q7RF_PA_TABLE[i]) {
-      ESP_LOGE(TAG, "Failed to write CC1101 PATABLE");
+      ESP_LOGE(TAG, "Failed to write CC1101 PATABLE.");
       return false;
     }
     ESP_LOGD(TAG, "Written CC1101 PATABLE[%d]: %02x", i, Q7RF_PA_TABLE[i]);
@@ -107,45 +107,53 @@ bool Q7RF::reset_cc() {
   return true;
 }
 
-void Q7RF::read_cc_register(uint8_t reg, uint8_t *value) {
+void Q7RFSwitch::read_cc_register(uint8_t reg, uint8_t *value) {
   this->enable();
   this->transfer_byte(reg);
   *value = this->transfer_byte(0);
   this->disable();
 }
 
-void Q7RF::read_cc_config_register(uint8_t reg, uint8_t *value) { this->read_cc_register(reg + 0x80, value); }
+void Q7RFSwitch::read_cc_config_register(uint8_t reg, uint8_t *value) { this->read_cc_register(reg + 0x80, value); }
 
-void Q7RF::write_cc_register(uint8_t reg, uint8_t *value) {
+void Q7RFSwitch::write_cc_register(uint8_t reg, uint8_t *value) {
   this->enable();
   this->transfer_byte(reg);
   this->transfer_array(value, sizeof(value));
   this->disable();
 }
 
-void Q7RF::write_cc_config_register(uint8_t reg, uint8_t value) {
+void Q7RFSwitch::write_cc_config_register(uint8_t reg, uint8_t value) {
   uint8_t arr[1] = {value};
   this->write_cc_register(reg, arr);
 }
 
-void Q7RF::setup() {
+void Q7RFSwitch::setup() {
   this->spi_setup();
   if (this->reset_cc()) {
     ESP_LOGI(TAG, "CC1101 reset successful.");
-    this->initialized = true;
   } else {
     ESP_LOGE(TAG, "Failed to reset CC1101 modem. Check connection.");
+    return;
   }
+
+  this->initialized = true;
 }
 
-void Q7RF::write_state(bool state) {
+void Q7RFSwitch::write_state(bool state) {
   if (this->initialized) {
     // TODO: send state toggle
     this->publish_state(state);
   }
 }
 
-void Q7RF::dump_config() { ESP_LOGCONFIG(TAG, "Empty custom switch"); }
+void Q7RFSwitch::dump_config() {
+  ESP_LOGCONFIG(TAG, "Q7RF:");
+  ESP_LOGCONFIG(TAG, "  CC1101 CS Pin: %u", this->cs_->get_pin());
+  ESP_LOGCONFIG(TAG, "  Q7RF Device ID: 0x%04x", this->q7rf_device_id);
+}
+
+void Q7RFSwitch::set_q7rf_device_id(uint16_t id) { this->q7rf_device_id = id; }
 
 }  // namespace q7rf
 }  // namespace esphome
