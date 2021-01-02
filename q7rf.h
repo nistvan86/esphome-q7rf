@@ -15,6 +15,9 @@ class Q7RF : public switch_::Switch,
   bool initialized = false;
   bool reset_cc();
   void read_cc_register(uint8_t reg, uint8_t* value);
+  void read_cc_config_register(uint8_t reg, uint8_t* value);
+  void write_cc_register(uint8_t reg, uint8_t* value);
+  void write_cc_config_register(uint8_t reg, uint8_t value);
 
  public:
   void setup() override;
