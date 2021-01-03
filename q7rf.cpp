@@ -206,8 +206,6 @@ void Q7RFSwitch::get_msg(uint8_t cmd, uint8_t *msg) {
 
   *cursor = '\0';
 
-  ESP_LOGD(TAG, "Message: %s", binary_msg);
-
   // Convert msg to bytes
   cursor = binary_msg;  // Reset cursor
   uint8_t *dest = msg;
