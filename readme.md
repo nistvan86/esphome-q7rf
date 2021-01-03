@@ -33,7 +33,7 @@ Connections:
 If you are not familiar with ESPHome and its integration with Home Assistant, please read it first in the [official manual](https://esphome.io/guides/getting_started_hassio.html). You need to have a node preconfigured and visible in Home Assistant before following the next steps:
 
 - In your configuration directory create a `custom_components` subfolder and enter it.
-- Clone this project with the command: `git clone git@github.com:nistvan86/q7rf-esphome.git q7rf`
+- Clone this project with the command: `git clone https://github.com/nistvan86/q7rf-esphome.git q7rf`
 - Add the necessary configuration blocks to your node's config yaml file:
 
         switch:
