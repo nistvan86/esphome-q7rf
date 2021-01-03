@@ -49,6 +49,12 @@ static const uint8_t CREG_PATABLE_BURST_WRITE = 0x7e;
 static const uint8_t CREG_PATABLE_BURST_READ = 0xfe;
 static const uint8_t CFIFO_TX_BURST = 0x7f;
 
+static const uint8_t MARCSTATE_TX = 0x13;
+static const uint8_t MARCSTATE_TX_END = 0x14;
+static const uint8_t MARCSTATE_RXTX_SWITCH = 0x15;
+
+static const uint8_t MSG_SEND_ERRORS_RESET_LIMIT = 3;
+
 /* Each symbol takes 220us. Computherm/Delta Q7RF uses PWM modulation.
    Every data bit is encoded as 3 bit inside the buffer.
    001 = 1, 011 = 0, 111000111 = preamble */
@@ -223,6 +229,7 @@ void Q7RFSwitch::get_msg(uint8_t cmd, uint8_t *msg) {
     cursor_msg++;
   }
 
+#if ESPHOME_LOG_LEVEL >= ESPHOME_LOG_LEVEL_DEBUG
   // Assemble debug print
   char debug[91];
   cursor = debug;
@@ -233,6 +240,7 @@ void Q7RFSwitch::get_msg(uint8_t cmd, uint8_t *msg) {
     cursor_msg++;
   }
   ESP_LOGD(TAG, "Encoded msg: 0x%02x as 0x%s", cmd, debug);
+#endif
 }
 
 bool Q7RFSwitch::send_cc_data(const uint8_t *data, size_t length) {
@@ -255,8 +263,8 @@ bool Q7RFSwitch::send_cc_data(const uint8_t *data, size_t length) {
 
   uint8_t state;
   this->read_cc_register(SREG_MARCSTATE, &state);
-  state = state & 0x1f;
-  if (state != 0x13 && state != 0x14 && state != 0x15) {  // not one of TX / TX_END / RXTX_SWITCH states
+  state &= 0x1f;
+  if (state != MARCSTATE_TX && state != MARCSTATE_TX_END && state != MARCSTATE_RXTX_SWITCH) {
     ESP_LOGE(TAG, "CC1101 in invalid state after sending, returning to idle. State: 0x%02x", state);
     this->send_cc_cmd(CMD_SIDLE);
     return false;
@@ -265,7 +273,44 @@ bool Q7RFSwitch::send_cc_data(const uint8_t *data, size_t length) {
   return true;
 }
 
+bool Q7RFSwitch::send_msg(uint8_t msg) {
+  if (msg == MSG_NONE)
+    return false;
+
+  ESP_LOGD(TAG, "Sending message: 0x%02x", msg);
+
+  bool result = false;
+  switch (msg) {
+    case MSG_HEAT_ON:
+      result = this->send_cc_data(this->msg_heat_on_, sizeof(this->msg_heat_on_));
+      break;
+    case MSG_HEAT_OFF:
+      result = this->send_cc_data(this->msg_heat_off_, sizeof(this->msg_heat_off_));
+      break;
+    case MSG_PAIR:
+      result = this->send_cc_data(this->msg_pair_, sizeof(this->msg_pair_));
+      break;
+  }
+
+  if (result) {
+    this->last_msg_time_ = millis();
+  } else {
+    this->msg_errors_++;
+    if (this->msg_errors_ >= MSG_SEND_ERRORS_RESET_LIMIT) {
+      ESP_LOGE(TAG, "Multiple message send errors occured, forcing CC1101 reset.");
+      this->reset_cc();
+      this->msg_errors_ = 0;
+    }
+  }
+
+  return result;
+}
+
 void Q7RFSwitch::setup() {
+  // Revert switch to off state
+  this->state_ = false;
+  this->publish_state(this->state_);
+
   this->spi_setup();
   if (this->reset_cc()) {
     ESP_LOGI(TAG, "CC1101 reset successful.");
@@ -276,28 +321,29 @@ void Q7RFSwitch::setup() {
 
   ESP_LOGD(TAG, "Q7RF Device ID is: 0x%04x", this->q7rf_device_id_);
 
+  // Compile messages
   this->get_msg(Q7RF_MSG_CMD_PAIR, this->msg_pair_);
   this->get_msg(Q7RF_MSG_CMD_TURN_ON_HEATING, this->msg_heat_on_);
   this->get_msg(Q7RF_MSG_CMD_TURN_OFF_HEATING, this->msg_heat_off_);
 
+  // Register the pairing service
+  register_service(&Q7RFSwitch::on_pairing, this->get_name() + "_pair");
+
   this->initialized_ = true;
+}
+
+void Q7RFSwitch::on_pairing() {
+  if (this->initialized_) {
+    this->pending_msg_ = MSG_PAIR;
+    ESP_LOGI(TAG, "Enqueued pairing.");
+  }
 }
 
 void Q7RFSwitch::write_state(bool state) {
   if (this->initialized_) {
-    ESP_LOGD(TAG, "Sending new state to Q7RF");
-
-    // TODO: add queuing and resending with delay
-    bool success;
-    if (state) {
-      success = this->send_cc_data(this->msg_heat_on_, 45);
-    } else {
-      success = this->send_cc_data(this->msg_heat_off_, 45);
-    }
-
-    if (success) {
-      this->publish_state(state);
-    }
+    this->state_ = state;
+    this->pending_msg_ = state ? MSG_HEAT_ON : MSG_HEAT_OFF;
+    this->publish_state(state);
   }
 }
 
@@ -305,9 +351,32 @@ void Q7RFSwitch::dump_config() {
   ESP_LOGCONFIG(TAG, "Q7RF:");
   ESP_LOGCONFIG(TAG, "  CC1101 CS Pin: %u", this->cs_->get_pin());
   ESP_LOGCONFIG(TAG, "  Q7RF Device ID: 0x%04x", this->q7rf_device_id_);
+  ESP_LOGCONFIG(TAG, "  Q7RF Resend interval: %d ms", this->q7rf_resend_interval_);
+}
+
+void Q7RFSwitch::update() {
+  if (this->initialized_) {
+    unsigned long now = millis();
+
+    if (this->pending_msg_ != MSG_NONE) {
+      ESP_LOGD(TAG, "Handling prioritized message: 0x%02x", this->pending_msg_);
+      // Send prioritized message
+      this->send_msg(this->pending_msg_);
+      this->pending_msg_ = MSG_NONE;
+    } else {
+      // Check if we have to resend current state by now
+      if (now - this->last_msg_time_ > this->q7rf_resend_interval_) {
+        ESP_LOGD(TAG, "Repeating last state.");
+        uint8_t msg = this->state_ ? MSG_HEAT_ON : MSG_HEAT_OFF;
+        this->send_msg(msg);
+      }
+    }
+  }
 }
 
 void Q7RFSwitch::set_q7rf_device_id(uint16_t id) { this->q7rf_device_id_ = id; }
+
+void Q7RFSwitch::set_q7rf_resend_interval(uint16_t interval) { this->q7rf_resend_interval_ = interval; }
 
 }  // namespace q7rf
 }  // namespace esphome
