@@ -4,6 +4,8 @@ This is an ESPHome custom component which allows you to control a Computherm/Del
 
 I've tested this project with an ESP8266 module (NodeMCU). It should work with the ESP32 as well, since protocol timing critical part is done by the CC1101 modem, but haven't tried it yet.
 
+Tested ESPHome version: 1.15.x
+
 **Use this project at your own risk. Reporting and/or fixing issues is always welcome.**
 
 ## Hardware
