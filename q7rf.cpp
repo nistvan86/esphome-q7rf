@@ -341,9 +341,11 @@ void Q7RFSwitch::on_pairing() {
 
 void Q7RFSwitch::write_state(bool state) {
   if (this->initialized_) {
-    this->state_ = state;
-    this->pending_msg_ = state ? MSG_HEAT_ON : MSG_HEAT_OFF;
-    this->publish_state(state);
+    if (this->state_ != state) {
+      this->state_ = state;
+      this->pending_msg_ = state ? MSG_HEAT_ON : MSG_HEAT_OFF;
+      this->publish_state(state);
+    }
   }
 }
 
