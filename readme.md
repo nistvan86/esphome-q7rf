@@ -86,7 +86,7 @@ You can configure Home Assistant's [generic thermostat](https://www.home-assista
 
 ## Resources
 
-* The cc1101-ook library which functioned as a template for the communication best practices with the modem (https://github.com/martyrs/cc1101-ook)
-* denx's awesome article series about reverse engineering the Q8RF's protocol. Unfortunatelly it's only
-  available in Hungarian. (https://ardu.blog.hu/2019/04/17/computherm_q8rf_uj_kihivas_part)
-* CC1101 product manual from Ti: http://www.ti.com/lit/ds/symlink/cc1101.pdf
+* The [cc1101-ook library](https://github.com/martyrs/cc1101-ook) which functioned as a template for the communication best practices with the modem.
+* [denx's awesome article series](https://ardu.blog.hu/2019/04/17/computherm_q8rf_uj_kihivas_part) about reverse engineering the Q8RF's protocol. Unfortunatelly it's only
+  available in Hungarian.
+* [CC1101 product manual](http://www.ti.com/lit/ds/symlink/cc1101.pdf) from TI
