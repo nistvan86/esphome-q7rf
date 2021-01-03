@@ -176,7 +176,7 @@ void Q7RFSwitch::encode_bits(uint16_t byte, uint8_t pad_to_length, char **dest) 
   }
 }
 
-void Q7RFSwitch::get_msg(uint8_t cmd, uint8_t msg[45]) {
+void Q7RFSwitch::get_msg(uint8_t cmd, uint8_t *msg) {
   char binary_msg[360];
   char *cursor = binary_msg;
 
@@ -206,20 +206,24 @@ void Q7RFSwitch::get_msg(uint8_t cmd, uint8_t msg[45]) {
 
   // Convert msg to bytes
   cursor = binary_msg;  // Reset cursor
+  uint8_t *cursor_msg = msg;
   char binary_byte[9];
   binary_byte[8] = '\0';
   for (int b = 0; b < 45; b++) {
     strncpy(binary_byte, cursor, 8);
     cursor += 8;
-    msg[b] = strtoul(binary_byte, 0, 2);
+    *cursor_msg = strtoul(binary_byte, 0, 2);
+    cursor_msg++;
   }
 
   // Assemble debug print
   char debug[91];
   cursor = debug;
+  cursor_msg = msg;
   for (int b = 0; b < 45; b++) {
-    sprintf(cursor, "%x", msg[b]);
+    sprintf(cursor, "%x", *cursor_msg);
     cursor += 2;
+    cursor_msg++;
   }
   ESP_LOGD(TAG, "Encoded msg: 0x%02x as 0x%s", cmd, debug);
 }
