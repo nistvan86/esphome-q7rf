@@ -37,11 +37,11 @@ If you are not familiar with ESPHome and it's integration with Home Assistant, p
 - Add the necessary configuration blocks to your node's config yaml file:
 
         switch:
-        - platform: q7rf
-          name: Q7RF switch
-          cs_pin: D8
-          q7rf_device_id: 0x6ed5
-          q7rf_resend_interval: 60000
+          - platform: q7rf
+            name: Q7RF switch
+            cs_pin: D8
+            q7rf_device_id: 0x6ed5
+            q7rf_resend_interval: 60000
 
         spi:
           clk_pin: D5
