@@ -6,10 +6,10 @@ namespace q7rf {
 
 static const char *TAG = "q7rf.switch";
 
-static const char *Q7RF_PREAMBLE = "111000111";
-static const char *Q7RF_ZERO_BIT = "011";
-static const char *Q7RF_ONE_BIT = "001";
-static const char *Q7RF_GAP_BIT = "000";
+static const char *Q7RF_PREAMBLE_DATA = "111000111";
+static const char *Q7RF_ZERO_BIT_DATA = "011";
+static const char *Q7RF_ONE_BIT_DATA = "001";
+static const char *Q7RF_GAP_DATA = "000";
 
 static const uint8_t Q7RF_MSG_CMD_PAIR = 0x00;
 static const uint8_t Q7RF_MSG_CMD_TURN_ON_HEATING = 0xFF;
@@ -178,14 +178,14 @@ void Q7RFSwitch::encode_bits(uint16_t byte, uint8_t pad_to_length, char **dest) 
 
   if (binary_len < pad_to_length) {
     for (int p = 0; p < pad_to_length - binary_len; p++) {
-      strncpy(*dest, Q7RF_ZERO_BIT, strlen(Q7RF_ZERO_BIT));
-      *dest += strlen(Q7RF_ZERO_BIT);
+      strncpy(*dest, Q7RF_ZERO_BIT_DATA, strlen(Q7RF_ZERO_BIT_DATA));
+      *dest += strlen(Q7RF_ZERO_BIT_DATA);
     }
   }
 
   for (int b = 0; b < binary_len; b++) {
-    strncpy(*dest, binary[b] == '1' ? Q7RF_ONE_BIT : Q7RF_ZERO_BIT, strlen(Q7RF_ONE_BIT));
-    *dest += strlen(Q7RF_ZERO_BIT);
+    strncpy(*dest, binary[b] == '1' ? Q7RF_ONE_BIT_DATA : Q7RF_ZERO_BIT_DATA, strlen(Q7RF_ONE_BIT_DATA));
+    *dest += strlen(Q7RF_ZERO_BIT_DATA);
   }
 }
 
@@ -195,8 +195,8 @@ void Q7RFSwitch::get_msg(uint8_t cmd, uint8_t *msg) {
 
   // Preamble
   char *preamble_start = cursor;
-  strncpy(cursor, Q7RF_PREAMBLE, strlen(Q7RF_PREAMBLE));
-  cursor += strlen(Q7RF_PREAMBLE);
+  strncpy(cursor, Q7RF_PREAMBLE_DATA, strlen(Q7RF_PREAMBLE_DATA));
+  cursor += strlen(Q7RF_PREAMBLE_DATA);
 
   char *payload_start = cursor;
 
@@ -210,8 +210,8 @@ void Q7RFSwitch::get_msg(uint8_t cmd, uint8_t *msg) {
   cursor += cursor - payload_start;
 
   // Add a gap
-  strncpy(cursor, Q7RF_GAP_BIT, strlen(Q7RF_GAP_BIT));
-  cursor += strlen(Q7RF_GAP_BIT);
+  strncpy(cursor, Q7RF_GAP_DATA, strlen(Q7RF_GAP_DATA));
+  cursor += strlen(Q7RF_GAP_DATA);
 
   // Repeat the whole burst
   strncpy(cursor, preamble_start, cursor - preamble_start);
@@ -356,14 +356,14 @@ void Q7RFSwitch::dump_config() {
 
 void Q7RFSwitch::update() {
   if (this->initialized_) {
-    unsigned long now = millis();
-
     if (this->pending_msg_ != MSG_NONE) {
       ESP_LOGD(TAG, "Handling prioritized message: 0x%02x", this->pending_msg_);
       // Send prioritized message
       this->send_msg(this->pending_msg_);
       this->pending_msg_ = MSG_NONE;
     } else {
+      unsigned long now = millis();
+
       // Check if we have to resend current state by now
       if (now - this->last_msg_time_ > this->q7rf_resend_interval_) {
         ESP_LOGD(TAG, "Repeating last state.");
