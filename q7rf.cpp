@@ -6,6 +6,15 @@ namespace q7rf {
 
 static const char *TAG = "q7rf.switch";
 
+static const char *Q7RF_PREAMBLE = "111000111";
+static const char *Q7RF_ZERO_BIT = "011";
+static const char *Q7RF_ONE_BIT = "001";
+static const char *Q7RF_GAP_BIT = "000";
+
+static const uint8_t Q7RF_MSG_CMD_PAIR = 0x00;
+static const uint8_t Q7RF_MSG_CMD_TURN_ON_HEATING = 0xFF;
+static const uint8_t Q7RF_MSG_CMD_TURN_OFF_HEATING = 0x0F;
+
 static const uint8_t EXPECTED_CC1101_PARTNUM = 0;
 static const uint8_t EXPECTED_CC1101_VERSION = 0x14;
 
@@ -149,6 +158,70 @@ void Q7RFSwitch::write_cc_config_register(uint8_t reg, uint8_t value) {
   this->write_cc_register(reg, arr);
 }
 
+void Q7RFSwitch::encode_bits(uint16_t byte, uint8_t pad_to_length, char **dest) {
+  char binary[9];
+  itoa(byte, binary, 2);
+  int binary_len = strlen(binary);
+
+  if (binary_len < pad_to_length) {
+    for (int p = 0; p < pad_to_length - binary_len; p++) {
+      strncpy(*dest, Q7RF_ZERO_BIT, strlen(Q7RF_ZERO_BIT));
+      *dest += strlen(Q7RF_ZERO_BIT);
+    }
+  }
+
+  for (int b = 0; b < binary_len; b++) {
+    strncpy(*dest, binary[b] == '1' ? Q7RF_ONE_BIT : Q7RF_ZERO_BIT, strlen(Q7RF_ONE_BIT));
+    *dest += strlen(Q7RF_ZERO_BIT);
+  }
+}
+
+void Q7RFSwitch::get_msg(uint8_t cmd, uint8_t *msg) {
+  char binary_msg[361];
+  char *cursor = binary_msg;
+
+  // Preamble
+  char *preamble_start = cursor;
+  strncpy(cursor, Q7RF_PREAMBLE, strlen(Q7RF_PREAMBLE));
+  cursor += strlen(Q7RF_PREAMBLE);
+
+  char *payload_start = cursor;
+
+  // Command
+  this->encode_bits(this->q7rf_device_id_, 16, &cursor);
+  this->encode_bits(8, 4, &cursor);
+  this->encode_bits(cmd, 8, &cursor);
+
+  // Repeat the command once more
+  strncpy(cursor, payload_start, cursor - payload_start);
+  cursor += cursor - payload_start;
+
+  // Add a gap
+  strncpy(cursor, Q7RF_GAP_BIT, strlen(Q7RF_GAP_BIT));
+  cursor += strlen(Q7RF_GAP_BIT);
+
+  // Repeat the whole burst
+  strncpy(cursor, preamble_start, cursor - preamble_start);
+  cursor += cursor - preamble_start;
+
+  *cursor = '\0';
+
+  ESP_LOGD(TAG, "Message: %s", binary_msg);
+
+  // Convert msg to bytes
+  cursor = binary_msg;  // Reset cursor
+  uint8_t *dest = msg;
+
+  char binary_byte[9];
+  binary_byte[8] = '\0';
+  for (int b = 0; b < 45; b++) {
+    strncpy(binary_byte, cursor, 8);
+    cursor += 8;
+    *dest = strtoul(binary_byte, 0, 2);
+    dest++;
+  }
+}
+
 void Q7RFSwitch::setup() {
   this->spi_setup();
   if (this->reset_cc()) {
@@ -157,6 +230,10 @@ void Q7RFSwitch::setup() {
     ESP_LOGE(TAG, "Failed to reset CC1101 modem. Check connection.");
     return;
   }
+
+  this->get_msg(Q7RF_MSG_CMD_PAIR, this->msg_pair_);
+  this->get_msg(Q7RF_MSG_CMD_TURN_ON_HEATING, this->msg_heat_on_);
+  this->get_msg(Q7RF_MSG_CMD_TURN_OFF_HEATING, this->msg_heat_off_);
 
   this->initialized_ = true;
 }

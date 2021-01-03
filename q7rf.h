@@ -13,7 +13,10 @@ class Q7RFSwitch : public switch_::Switch,
                                          spi::DATA_RATE_1KHZ> {
  protected:
   bool initialized_ = false;
-  uint16_t q7rf_device_id_ = 0x6ed5;
+  uint16_t q7rf_device_id_ = 0;
+  uint8_t msg_pair_[45];
+  uint8_t msg_heat_on_[45];
+  uint8_t msg_heat_off_[45];
 
  private:
   bool reset_cc();
@@ -22,6 +25,8 @@ class Q7RFSwitch : public switch_::Switch,
   void read_cc_config_register(uint8_t reg, uint8_t* value);
   void write_cc_register(uint8_t reg, uint8_t* value);
   void write_cc_config_register(uint8_t reg, uint8_t value);
+  void encode_bits(uint16_t byte, uint8_t pad_to_length, char** dest);
+  void get_msg(uint8_t cmd, uint8_t* msg);
 
  public:
   void setup() override;
