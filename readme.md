@@ -1,6 +1,6 @@
 # q7rf-esphome
 
-This is an ESPHome custom component which allows you to control a Computherm/Delta Q7RF/Q8RF receiver equiped furnace using a TI CC1101 transceiver module. This component definies a switch platform for state toggling and a service for pairing.
+This is an ESPHome custom component which allows you to control a Computherm/Delta Q7RF/Q8RF receiver equiped furnace using a TI CC1101 transceiver module. This component defines a switch platform for state toggling and a service for pairing.
 
 I've tested this project with an ESP8266 module (NodeMCU). It should work with the ESP32 as well, since protocol timing critical part is done by the CC1101 modem, but haven't tried it yet.
 
@@ -9,7 +9,7 @@ Tested ESPHome version: 1.15.3
 **Use this project at your own risk. Reporting and/or fixing issues is always welcome.**
 
 ## Hardware
-You need a CC1101 module which is assembled for 868 MHz. The chip on it's own can be configured for many targets, but the antenna design on the board needs to be tuned for the specific frequency in mind.
+You need a CC1101 module which is assembled for 868 MHz. The chip on its own can be configured for many targets, but the antenna design on the board needs to be tuned for the specific frequency in mind.
 
 CC1101 module needs to be connected to the standard SPI pins of ESP8266 (secondary SPI PINs, the first set is used by the flash RAM module).
 
@@ -30,7 +30,7 @@ Connections:
 
 ## ESPHome setup
 
-If you are not familiar with ESPHome and it's integration with Home Assistant, please read it first at the [official manual](https://esphome.io/guides/getting_started_hassio.html). You need to have a node preconfigured and visible in Home Assistant before following the next steps:
+If you are not familiar with ESPHome and its integration with Home Assistant, please read it first in the [official manual](https://esphome.io/guides/getting_started_hassio.html). You need to have a node preconfigured and visible in Home Assistant before following the next steps:
 
 - In your configuration directory create a `custom_components` subfolder and enter it.
 - Clone this project with the command: `git clone git@github.com:nistvan86/q7rf-esphome.git q7rf`
@@ -49,7 +49,7 @@ If you are not familiar with ESPHome and it's integration with Home Assistant, p
           mosi_pin: D7
 
 Where:
-- `q7rf_device_id` (required): is a 16 bit transmitter specific ID and learnt by the receiver in the pairing process. If you operatre multiple furnaces in the vicinity you must specify unique IDs for each transmitter to control them.
+- `q7rf_device_id` (required): is a 16 bit transmitter specific ID and learnt by the receiver in the pairing process. If you operate multiple furnaces in the vicinity you must specify unique IDs for each transmitter to control them.
 - `q7rf_resend_interval` (optional): specifies how often to repeat the last state set command. Since this is a simplex protocol, there's no response coming for messages and we need to compensate for corrupt or lost messages by repeating them. Default is: 60000 ms
 
 Once flashed, check the ESPHome logs (or the UART output of the ESP8266) to see if configuration was successful. You should see similar lines (note: C/D lines are only visible if you left the logger's loglevel at the default DEBUG or lower):
@@ -65,7 +65,7 @@ During configuration print:
     [C][q7rf.switch:353]:   Q7RF Device ID: 0x6ed5
     [C][q7rf.switch:354]:   Q7RF Resend interval: 60000 ms
 
-In Home Assistant under _Configuration_ → _Entities_ you should have a new switch with the same name you have specified ("Q7RF switch" in this example). In case you have disabled the automatic dashboard, add the switch to one of your dashboard. Find it and try toggling it. In the ESPHome log output you should see the component reacting:
+In Home Assistant under _Configuration_ → _Entities_ you should have a new switch with the same name you have specified ("Q7RF switch" in this example). In case you have disabled the automatic dashboard, add the switch to one of your dashboards. Find it and try toggling it. In the ESPHome log output you should see the component reacting:
 
     [D][switch:021]: 'Q7RF switch' Turning ON.
     [D][switch:045]: 'Q7RF switch': Sending state ON
