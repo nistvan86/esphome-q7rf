@@ -112,12 +112,12 @@ bool Q7RFSwitch::reset_cc() {
 
   this->enable();
   this->write_byte(CREG_PATABLE_BURST_WRITE);
-  this->write_array(pa_table, sizeof(pa_table));
+  this->write_array(pa_table, sizeof(Q7RF_PA_TABLE));
   this->disable();
 
   this->enable();
   this->write_byte(CREG_PATABLE_BURST_READ);
-  this->read_array(pa_table, sizeof(pa_table));
+  this->read_array(pa_table, sizeof(Q7RF_PA_TABLE));
   this->disable();
 
   for (int i = 0; i < sizeof(Q7RF_PA_TABLE); i++) {
@@ -146,16 +146,16 @@ void Q7RFSwitch::read_cc_register(uint8_t reg, uint8_t *value) {
 
 void Q7RFSwitch::read_cc_config_register(uint8_t reg, uint8_t *value) { this->read_cc_register(reg + 0x80, value); }
 
-void Q7RFSwitch::write_cc_register(uint8_t reg, uint8_t *value) {
+void Q7RFSwitch::write_cc_register(uint8_t reg, uint8_t *value, size_t length) {
   this->enable();
   this->transfer_byte(reg);
-  this->transfer_array(value, sizeof(value));
+  this->transfer_array(value, length);
   this->disable();
 }
 
 void Q7RFSwitch::write_cc_config_register(uint8_t reg, uint8_t value) {
   uint8_t arr[1] = {value};
-  this->write_cc_register(reg, arr);
+  this->write_cc_register(reg, arr, 1);
 }
 
 void Q7RFSwitch::encode_bits(uint16_t byte, uint8_t pad_to_length, char **dest) {
@@ -176,8 +176,8 @@ void Q7RFSwitch::encode_bits(uint16_t byte, uint8_t pad_to_length, char **dest) 
   }
 }
 
-void Q7RFSwitch::get_msg(uint8_t cmd, uint8_t *msg) {
-  char binary_msg[361];
+void Q7RFSwitch::get_msg(uint8_t cmd, uint8_t msg[45]) {
+  char binary_msg[360];
   char *cursor = binary_msg;
 
   // Preamble
@@ -204,20 +204,24 @@ void Q7RFSwitch::get_msg(uint8_t cmd, uint8_t *msg) {
   strncpy(cursor, preamble_start, cursor - preamble_start);
   cursor += cursor - preamble_start;
 
-  *cursor = '\0';
-
   // Convert msg to bytes
   cursor = binary_msg;  // Reset cursor
-  uint8_t *dest = msg;
-
   char binary_byte[9];
   binary_byte[8] = '\0';
   for (int b = 0; b < 45; b++) {
     strncpy(binary_byte, cursor, 8);
     cursor += 8;
-    *dest = strtoul(binary_byte, 0, 2);
-    dest++;
+    msg[b] = strtoul(binary_byte, 0, 2);
   }
+
+  // Assemble debug print
+  char debug[91];
+  cursor = debug;
+  for (int b = 0; b < 45; b++) {
+    sprintf(cursor, "%x", msg[b]);
+    cursor += 2;
+  }
+  ESP_LOGD(TAG, "Encoded msg: 0x%02x as 0x%s", cmd, debug);
 }
 
 void Q7RFSwitch::setup() {
@@ -228,6 +232,8 @@ void Q7RFSwitch::setup() {
     ESP_LOGE(TAG, "Failed to reset CC1101 modem. Check connection.");
     return;
   }
+
+  ESP_LOGD(TAG, "Q7RF Device ID is: 0x%04x", this->q7rf_device_id_);
 
   this->get_msg(Q7RF_MSG_CMD_PAIR, this->msg_pair_);
   this->get_msg(Q7RF_MSG_CMD_TURN_ON_HEATING, this->msg_heat_on_);
