@@ -38,15 +38,15 @@ If you are not familiar with ESPHome and it's integration with Home Assistant, p
 
         switch:
         - platform: q7rf
-            name: Q7RF switch
-            cs_pin: D8
-            q7rf_device_id: 0x6ed5
-            q7rf_resend_interval: 60000
+          name: Q7RF switch
+          cs_pin: D8
+          q7rf_device_id: 0x6ed5
+          q7rf_resend_interval: 60000
 
         spi:
-        clk_pin: D5
-        miso_pin: D6
-        mosi_pin: D7
+          clk_pin: D5
+          miso_pin: D6
+          mosi_pin: D7
 
 Where:
 - `q7rf_device_id` (required): is a 16 bit transmitter specific ID and learnt by the receiver in the pairing process. If you operatre multiple furnaces in the vicinity you must specify unique IDs for each transmitter to control them.
