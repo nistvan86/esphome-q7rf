@@ -19,6 +19,10 @@ static const uint8_t EXPECTED_CC1101_PARTNUM = 0;
 static const uint8_t EXPECTED_CC1101_VERSION = 0x14;
 
 static const uint8_t CMD_SRES = 0x30;
+static const uint8_t CMD_STX = 0x35;
+static const uint8_t CMD_SIDLE = 0x36;
+static const uint8_t CMD_SFRX = 0x3a;
+static const uint8_t CMD_SFTX = 0x3b;
 
 static const uint8_t REG_PARTNUM = 0xf0;
 static const uint8_t REG_VERSION = 0xf1;
@@ -39,8 +43,11 @@ static const uint8_t CREG_MCSM0 = 0x18;
 static const uint8_t CREG_FOCCFG = 0x19;
 static const uint8_t CREG_FREND0 = 0x22;
 
+static const uint8_t SREG_MARCSTATE = 0xf5;
+
 static const uint8_t CREG_PATABLE_BURST_WRITE = 0x7e;
 static const uint8_t CREG_PATABLE_BURST_READ = 0xfe;
+static const uint8_t CFIFO_TX_BURST = 0x7f;
 
 /* Each symbol takes 220us. Computherm/Delta Q7RF uses PWM modulation.
    Every data bit is encoded as 3 bit inside the buffer.
@@ -228,6 +235,36 @@ void Q7RFSwitch::get_msg(uint8_t cmd, uint8_t *msg) {
   ESP_LOGD(TAG, "Encoded msg: 0x%02x as 0x%s", cmd, debug);
 }
 
+bool Q7RFSwitch::send_cc_data(const uint8_t *data, size_t length) {
+  uint8_t buffer[length];
+  for (int i = 0; i < length; i++) {
+    buffer[i] = *data;
+    data++;
+  }
+
+  this->send_cc_cmd(CMD_SIDLE);
+  this->send_cc_cmd(CMD_SFRX);
+  this->send_cc_cmd(CMD_SFTX);
+
+  this->enable();
+  this->write_byte(CFIFO_TX_BURST);
+  this->write_array(buffer, length);
+  this->disable();
+
+  this->send_cc_cmd(CMD_STX);
+
+  uint8_t state;
+  this->read_cc_register(SREG_MARCSTATE, &state);
+  state = state & 0x1f;
+  if (state != 0x13 && state != 0x14 && state != 0x15) {  // not one of TX / TX_END / RXTX_SWITCH states
+    ESP_LOGE(TAG, "CC1101 in invalid state after sending, returning to idle. State: 0x%02x", state);
+    this->send_cc_cmd(CMD_SIDLE);
+    return false;
+  }
+
+  return true;
+}
+
 void Q7RFSwitch::setup() {
   this->spi_setup();
   if (this->reset_cc()) {
@@ -248,8 +285,19 @@ void Q7RFSwitch::setup() {
 
 void Q7RFSwitch::write_state(bool state) {
   if (this->initialized_) {
-    // TODO: send state toggle
-    this->publish_state(state);
+    ESP_LOGD(TAG, "Sending new state to Q7RF");
+
+    // TODO: add queuing and resending with delay
+    bool success;
+    if (state) {
+      success = this->send_cc_data(this->msg_heat_on_, 45);
+    } else {
+      success = this->send_cc_data(this->msg_heat_off_, 45);
+    }
+
+    if (success) {
+      this->publish_state(state);
+    }
   }
 }
 

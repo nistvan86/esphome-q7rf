@@ -25,6 +25,7 @@ class Q7RFSwitch : public switch_::Switch,
   void read_cc_config_register(uint8_t reg, uint8_t* value);
   void write_cc_register(uint8_t reg, uint8_t* value, size_t length);
   void write_cc_config_register(uint8_t reg, uint8_t value);
+  bool send_cc_data(const uint8_t* data, size_t length);
 
   void encode_bits(uint16_t byte, uint8_t pad_to_length, char** dest);
   void get_msg(uint8_t cmd, uint8_t* msg);
