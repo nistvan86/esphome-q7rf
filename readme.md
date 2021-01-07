@@ -9,9 +9,9 @@ Tested ESPHome version: 1.15.3
 **Use this project at your own risk. Reporting and/or fixing issues is always welcome.**
 
 ## Hardware
-You need a CC1101 module which is assembled for 868 MHz. The chip on its own can be configured for many targets, but the antenna design on the board needs to be tuned for the specific frequency in mind.
+You need a CC1101 module which is assembled for 868 MHz. The chip on its own can be configured for many targets, but the antenna design on the board have to be tuned for the specific frequency in mind.
 
-CC1101 module needs to be connected to the standard SPI pins of ESP8266 (secondary SPI PINs, the first set is used by the SPI flash chip).
+The CC1101 module is connected to the standard SPI pins of ESP8266 (secondary SPI PINs, the first set is used by the SPI flash chip).
 
 Connections:
 
