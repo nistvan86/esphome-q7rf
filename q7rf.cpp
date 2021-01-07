@@ -363,9 +363,17 @@ void Q7RFSwitch::update() {
       this->pending_msg_ = MSG_NONE;
     } else {
       unsigned long now = millis();
+      unsigned long diff = 0UL;
+
+      if (this->last_msg_time_ > now) {
+        // millis() overflows every ~50 days
+        diff = (ULONG_MAX - this->last_msg_time_) + now;
+      } else {
+        diff = now - this->last_msg_time_;
+      }
 
       // Check if we have to resend current state by now
-      if (now - this->last_msg_time_ > this->q7rf_resend_interval_) {
+      if (diff > this->q7rf_resend_interval_) {
         ESP_LOGD(TAG, "Repeating last state.");
         uint8_t msg = this->state_ ? MSG_HEAT_ON : MSG_HEAT_OFF;
         this->send_msg(msg);
