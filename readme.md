@@ -1,4 +1,4 @@
-# q7rf-esphome
+# esphome-q7rf
 
 This is an ESPHome custom component which allows you to control a Computherm/Delta Q7RF/Q8RF receiver equiped furnace using a TI CC1101 transceiver module. This component defines a switch platform for state toggling and a service for pairing.
 
@@ -33,7 +33,7 @@ Connections:
 If you are not familiar with ESPHome and its integration with Home Assistant, please read it first in the [official manual](https://esphome.io/guides/getting_started_hassio.html). You need to have a node preconfigured and visible in Home Assistant before following the next steps:
 
 - In your configuration directory create a `custom_components` subfolder and enter it.
-- Clone this project with the command: `git clone https://github.com/nistvan86/q7rf-esphome.git q7rf`
+- Clone this project with the command: `git clone https://github.com/nistvan86/esphome-q7rf.git q7rf`
 - Add the necessary configuration blocks to your node's config yaml file:
 
         switch:
@@ -52,7 +52,7 @@ Where:
 - `q7rf_device_id` (required): is a 16 bit transmitter specific ID and learnt by the receiver in the pairing process. If you operate multiple furnaces in the vicinity you must specify unique IDs for each transmitter to control them.
 - `q7rf_resend_interval` (optional): specifies how often to repeat the last state set command. Since this is a simplex protocol, there's no response coming for messages and we need to compensate for corrupt or lost messages by repeating them. Default is: 60000 ms
 
-Once flashed, check the ESPHome logs (or the UART output of the ESP8266) to see if configuration was successful. You should see similar lines (note: C/D lines are only visible if you left the logger's loglevel at the default DEBUG or lower):
+Once flashed, check the logs (or the UART output of the ESP8266) to see if configuration was successful. You should see similar lines (note: C/D lines are only visible if you left the logger's loglevel at the default DEBUG or lower):
 
 During the `setup()` initialization:
 
