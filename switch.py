@@ -8,6 +8,7 @@ DEPENDENCIES = ["spi"]
 
 CONF_Q7RF_DEVICE_ID = "q7rf_device_id"
 CONF_Q7RF_RESEND_INTERVAL = "q7rf_resend_interval"
+CONF_Q7RF_TURN_ON_WATCHDOG_INTERVAL = "q7rf_turn_on_watchdog_interval"
 
 q7rf_ns = cg.esphome_ns.namespace("q7rf")
 Q7RF_SWITCH = q7rf_ns.class_("Q7RFSwitch", switch.Switch, cg.Component, spi.SPIDevice)
@@ -20,7 +21,8 @@ CONFIG_SCHEMA = (
         cv.Schema(
             {
                 cv.Required(CONF_Q7RF_DEVICE_ID): cv.hex_uint16_t,
-                cv.Optional(CONF_Q7RF_RESEND_INTERVAL): cv.uint16_t,
+                cv.Optional(CONF_Q7RF_RESEND_INTERVAL): cv.uint32_t,
+                cv.Optional(CONF_Q7RF_TURN_ON_WATCHDOG_INTERVAL): cv.uint32_t,
             }
         )
     )
@@ -36,3 +38,9 @@ def to_code(config):
     cg.add(var.set_q7rf_device_id(config[CONF_Q7RF_DEVICE_ID]))
     if CONF_Q7RF_RESEND_INTERVAL in config:
         cg.add(var.set_q7rf_resend_interval(config[CONF_Q7RF_RESEND_INTERVAL]))
+    if CONF_Q7RF_TURN_ON_WATCHDOG_INTERVAL in config:
+        cg.add(
+            var.set_q7rf_turn_on_watchdog_interval(
+                config[CONF_Q7RF_TURN_ON_WATCHDOG_INTERVAL]
+            )
+        )

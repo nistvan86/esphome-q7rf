@@ -20,7 +20,8 @@ class Q7RFSwitch : public switch_::Switch,
                                          spi::DATA_RATE_1KHZ> {
  protected:
   uint16_t q7rf_device_id_ = 0;
-  uint16_t q7rf_resend_interval_ = 60000;
+  uint32_t q7rf_resend_interval_ = 60000;
+  uint32_t q7rf_turn_on_watchdog_interval_ = 0;
 
   bool initialized_ = false;
   uint8_t msg_pair_[45];
@@ -29,21 +30,23 @@ class Q7RFSwitch : public switch_::Switch,
   bool state_ = false;
   uint8_t pending_msg_ = MSG_NONE;
   unsigned long last_msg_time_ = 0;
+  unsigned long last_turn_on_time_ = 0;
   uint8_t msg_errors_ = 0;
 
  private:
   bool reset_cc();
   void send_cc_cmd(uint8_t cmd);
-  void read_cc_register(uint8_t reg, uint8_t* value);
-  void read_cc_config_register(uint8_t reg, uint8_t* value);
-  void write_cc_register(uint8_t reg, uint8_t* value, size_t length);
+  void read_cc_register(uint8_t reg, uint8_t *value);
+  void read_cc_config_register(uint8_t reg, uint8_t *value);
+  void write_cc_register(uint8_t reg, uint8_t *value, size_t length);
   void write_cc_config_register(uint8_t reg, uint8_t value);
-  bool send_cc_data(const uint8_t* data, size_t length);
+  bool send_cc_data(const uint8_t *data, size_t length);
 
-  void encode_bits(uint16_t byte, uint8_t pad_to_length, char** dest);
-  void get_msg(uint8_t cmd, uint8_t* msg);
+  void encode_bits(uint16_t byte, uint8_t pad_to_length, char **dest);
+  void get_msg(uint8_t cmd, uint8_t *msg);
 
   bool send_msg(uint8_t msg);
+  void set_state(bool state);
 
  public:
   Q7RFSwitch() : PollingComponent(1000) {}
@@ -53,7 +56,8 @@ class Q7RFSwitch : public switch_::Switch,
   void update() override;
 
   void set_q7rf_device_id(uint16_t id);
-  void set_q7rf_resend_interval(uint16_t interval);
+  void set_q7rf_resend_interval(uint32_t interval);
+  void set_q7rf_turn_on_watchdog_interval(uint32_t interval);
   void on_pairing();
 };
 

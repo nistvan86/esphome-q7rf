@@ -79,6 +79,17 @@ static const uint8_t Q7RF_REG_CONFIG[] = {
 // 0xc0 = +12dB max power setting
 static const uint8_t Q7RF_PA_TABLE[] = {0x00, 0xc0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
 
+unsigned long elapsed(unsigned long since, unsigned long now) {
+  if (since > now) {
+    // millis() overflows every ~50 days
+    return (ULONG_MAX - since) + now;
+  } else {
+    return now - since;
+  }
+}
+
+uint8_t state_to_msg(bool state) { return state ? MSG_HEAT_ON : MSG_HEAT_OFF; }
+
 bool Q7RFSwitch::reset_cc() {
   // Chip reset sequence. CS wiggle (CC1101 manual page 45)
   this->disable();
@@ -306,10 +317,14 @@ bool Q7RFSwitch::send_msg(uint8_t msg) {
   return result;
 }
 
+void Q7RFSwitch::set_state(bool state) {
+  this->state_ = state;
+  this->publish_state(state);
+}
+
 void Q7RFSwitch::setup() {
   // Revert switch to off state
-  this->state_ = false;
-  this->publish_state(this->state_);
+  this->set_state(false);
 
   this->spi_setup();
   if (this->reset_cc()) {
@@ -340,10 +355,15 @@ void Q7RFSwitch::on_pairing() {
 }
 
 void Q7RFSwitch::write_state(bool state) {
-  if (this->initialized_ && this->state_ != state) {
-    this->state_ = state;
-    this->pending_msg_ = state ? MSG_HEAT_ON : MSG_HEAT_OFF;
-    this->publish_state(state);
+  if (this->initialized_) {
+    if (state) {
+      this->last_turn_on_time_ = millis();
+    }
+
+    if (this->state_ != state) {
+      this->set_state(state);
+      this->pending_msg_ = state_to_msg(state);
+    }
   }
 }
 
@@ -355,6 +375,7 @@ void Q7RFSwitch::dump_config() {
   }
   ESP_LOGCONFIG(TAG, "  Q7RF Device ID: 0x%04x", this->q7rf_device_id_);
   ESP_LOGCONFIG(TAG, "  Q7RF Resend interval: %d ms", this->q7rf_resend_interval_);
+  ESP_LOGCONFIG(TAG, "  Q7RF Turn on watchdog interval: %d ms", this->q7rf_turn_on_watchdog_interval_);
 }
 
 void Q7RFSwitch::update() {
@@ -366,19 +387,19 @@ void Q7RFSwitch::update() {
       this->pending_msg_ = MSG_NONE;
     } else {
       unsigned long now = millis();
-      unsigned long diff = 0UL;
 
-      if (this->last_msg_time_ > now) {
-        // millis() overflows every ~50 days
-        diff = (ULONG_MAX - this->last_msg_time_) + now;
-      } else {
-        diff = now - this->last_msg_time_;
+      if (this->state_ && this->q7rf_turn_on_watchdog_interval_ > 0 &&
+          elapsed(this->last_turn_on_time_, now) > this->q7rf_turn_on_watchdog_interval_) {
+        ESP_LOGD(TAG, "Turn on watch dog triggered, turning off furnace.");
+        this->set_state(false);
+        this->send_msg(MSG_HEAT_OFF);
+        return;
       }
 
       // Check if we have to resend current state by now
-      if (diff > this->q7rf_resend_interval_) {
+      if (elapsed(this->last_msg_time_, now) > this->q7rf_resend_interval_) {
         ESP_LOGD(TAG, "Repeating last state.");
-        uint8_t msg = this->state_ ? MSG_HEAT_ON : MSG_HEAT_OFF;
+        uint8_t msg = state_to_msg(this->state_);
         this->send_msg(msg);
       }
     }
@@ -387,7 +408,11 @@ void Q7RFSwitch::update() {
 
 void Q7RFSwitch::set_q7rf_device_id(uint16_t id) { this->q7rf_device_id_ = id; }
 
-void Q7RFSwitch::set_q7rf_resend_interval(uint16_t interval) { this->q7rf_resend_interval_ = interval; }
+void Q7RFSwitch::set_q7rf_resend_interval(uint32_t interval) { this->q7rf_resend_interval_ = interval; }
+
+void Q7RFSwitch::set_q7rf_turn_on_watchdog_interval(uint32_t interval) {
+  this->q7rf_turn_on_watchdog_interval_ = interval;
+}
 
 }  // namespace q7rf
 }  // namespace esphome

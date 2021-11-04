@@ -42,6 +42,7 @@ If you are not familiar with ESPHome and its integration with Home Assistant, pl
             cs_pin: D8
             q7rf_device_id: 0x6ed5
             q7rf_resend_interval: 60000
+            q7rf_turn_on_watchdog_interval: 0
 
         spi:
           clk_pin: D5
@@ -50,7 +51,8 @@ If you are not familiar with ESPHome and its integration with Home Assistant, pl
 
 Where:
 - `q7rf_device_id` (required): is a 16 bit transmitter specific ID and learnt by the receiver in the pairing process. If you operate multiple furnaces in the vicinity you must specify unique IDs for each transmitter to control them.
-- `q7rf_resend_interval` (optional): specifies how often to repeat the last state set command. Since this is a simplex protocol, there's no response coming for messages and we need to compensate for corrupt or lost messages by repeating them. Default is: 60000 ms
+- `q7rf_resend_interval` (optional): specifies how often to repeat the last state set command in milliseconds. Since this is a simplex protocol, there's no response coming for messages and we need to compensate for corrupt or lost messages by repeating them. Default is: 60000 ms (1 minute)
+- `q7rf_turn_on_watchdog_interval` (optional): specifies how long the furnace can stay turned on after the last `write_state` call arrived for the switch component in milliseconds. This can be used for example in conjunction with the `keep_alive` setting of Home Assistant's generic thermostat component to detect if system running HA disappers or crashes for some reason. Default is: 0 ms (no watchdog). Sample config: 900000 ms (15 minute), with a keep_alive of 3 minutes in HA (if HA crashes, furnace stops heating 15 minutes after the last turn on request).
 
 Once flashed, check the logs (or the UART output of the ESP8266) to see if configuration was successful. You should see similar lines (note: C/D lines are only visible if you left the logger's loglevel at the default DEBUG or lower):
 
