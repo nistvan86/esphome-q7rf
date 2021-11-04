@@ -349,10 +349,7 @@ void Q7RFSwitch::write_state(bool state) {
 
 void Q7RFSwitch::dump_config() {
   ESP_LOGCONFIG(TAG, "Q7RF:");
-  if (this->cs_->is_internal()) {
-    esphome::InternalGPIOPin *internal_pin = (esphome::InternalGPIOPin *) this->cs_;
-    ESP_LOGCONFIG(TAG, "  CC1101 CS Pin: %u", internal_pin->get_pin());
-  }
+  LOG_PIN("  CC1101 CS Pin: ", this->cs_);
   ESP_LOGCONFIG(TAG, "  Q7RF Device ID: 0x%04x", this->q7rf_device_id_);
   ESP_LOGCONFIG(TAG, "  Q7RF Resend interval: %d ms", this->q7rf_resend_interval_);
 }
