@@ -1,8 +1,8 @@
 # esphome-q7rf
 
-This is an ESPHome custom component which allows you to control a Computherm/Delta Q7RF/Q8RF receiver equiped furnace using a TI CC1101 transceiver module. This component defines a switch platform for state toggling and a service for pairing.
+This is an ESPHome custom component which allows you to control a Computherm/Delta Q7RF/Q8RF receiver equiped furnace using a TI CC1101 transceiver module. It defines a switch platform for state toggling and a service for pairing.
 
-I've tested this project with an ESP8266 module (NodeMCU). It should work with the ESP32 as well, since protocol timing critical part is done by the CC1101 modem, but haven't tried it yet.
+I've tested this project with an ESP8266 module (NodeMCU). It should work with the ESP32 as well, since protocol timing critical part is done by the CC1101 modem.
 
 Current tested compatible ESPHome version: v2021.10.3
 
@@ -30,55 +30,68 @@ Connections:
 
 ## ESPHome setup
 
-If you are not familiar with ESPHome and its integration with Home Assistant, please read it first in the [official manual](https://esphome.io/guides/getting_started_hassio.html). You need to have a node preconfigured and visible in Home Assistant before following the next steps:
+If you are not familiar with ESPHome and its integration with Home Assistant, please read it first in the [official manual](https://esphome.io/guides/getting_started_hassio.html).
 
-- In your configuration directory create a `custom_components` subfolder and enter it.
-- Clone this project with the command: `git clone https://github.com/nistvan86/esphome-q7rf.git q7rf`
-- Add the necessary configuration blocks to your node's config yaml file:
+Add this component using the following configuration in your node's yaml file:
 
-        switch:
-          - platform: q7rf
-            name: Q7RF switch
-            cs_pin: D8
-            q7rf_device_id: 0x6ed5
-            q7rf_resend_interval: 60000
-            q7rf_turn_on_watchdog_interval: 0
+    external_components:
+      - source: github://nistvan86/esphome-q7rf@main
+        components: [ q7rf ]
 
-        spi:
-          clk_pin: D5
-          miso_pin: D6
-          mosi_pin: D7
+    switch:
+      - platform: q7rf
+        name: Q7RF switch
+        cs_pin: D8
+        q7rf_device_id: 0x6ed5
+        q7rf_resend_interval: 60000
+        q7rf_turn_on_watchdog_interval: 0
+
+    spi:
+      clk_pin: D5
+      miso_pin: D6
+      mosi_pin: D7
 
 Where:
-- `q7rf_device_id` (required): is a 16 bit transmitter specific ID and learnt by the receiver in the pairing process. If you operate multiple furnaces in the vicinity you must specify unique IDs for each transmitter to control them.
-- `q7rf_resend_interval` (optional): specifies how often to repeat the last state set command in milliseconds. Since this is a simplex protocol, there's no response coming for messages and we need to compensate for corrupt or lost messages by repeating them. Default is: 60000 ms (1 minute)
-- `q7rf_turn_on_watchdog_interval` (optional): specifies how long the furnace can stay turned on after the last `write_state` call arrived for the switch component in milliseconds. This can be used for example in conjunction with the `keep_alive` setting of Home Assistant's generic thermostat component to detect if system running HA disappers or crashes for some reason. Default is: 0 ms (no watchdog). Sample config: 900000 ms (15 minutes), with a keep_alive of 3 minutes in HA (if HA crashes, furnace stops heating 15 minutes after the last turn on request).
+* `q7rf_device_id` (required): is a 16 bit transmitter specific ID and learnt by the receiver in the pairing process. If you operate multiple furnaces in the vicinity you must specify unique IDs for each transmitter. You can generate random identifiers with [random-hex](https://www.browserling.com/tools/random-hex) (use 4 digits).
 
-Once flashed, check the logs (or the UART output of the ESP8266) to see if configuration was successful. You should see similar lines (note: C/D lines are only visible if you left the logger's loglevel at the default DEBUG or lower):
+* `q7rf_resend_interval` (optional): specifies how often to repeat the last state in milliseconds. Since this is a simplex protocol, there's no response arriving from the receiver and we need to compensate for corrupt or lost messages by repeating them.
+
+  Default is: 60000 ms (1 minute)
+
+* `q7rf_turn_on_watchdog_interval` (optional): specifies how long the furnace can stay turned on after the last `write_state` call arrived for the switch component in milliseconds. This can be used for example in conjunction with the `keep_alive` setting of Home Assistant's [generic thermostat](https://www.home-assistant.io/integrations/generic_thermostat/) component to add additional safe guards against the crash of HA and to prevent excessive heating costs.
+
+  Default is: 0 ms (no watchdog).
+
+  Example: 900000 ms (15 minutes) and generic thermostat `keep_alive` set to 3 minutes
+
+Once flashed, check the logs (or the UART output of the ESP8266) to see if configuration was successful.
+
+You should see similar lines (note: C/D lines are only visible if you left the logger's level at the default DEBUG or lower):
 
 During the `setup()` initialization:
 
-    [I][q7rf.switch:316]: CC1101 reset successful.
+    [I][q7rf.switch:x]: CC1101 initialized.
 
 During configuration print:
 
-    [C][q7rf.switch:351]: Q7RF:
-    [C][q7rf.switch:352]:   CC1101 CS Pin: 15
-    [C][q7rf.switch:353]:   Q7RF Device ID: 0x6ed5
-    [C][q7rf.switch:354]:   Q7RF Resend interval: 60000 ms
+    [C][q7rf.switch:x]: Q7RF:
+    [C][q7rf.switch:x]:   CC1101 CS Pin: GPIO15
+    [C][q7rf.switch:x]:   Q7RF Device ID: 0x6ed5
+    [C][q7rf.switch:x]:   Q7RF Resend interval: 60000 ms
+    [C][q7rf.switch:x]:   Q7RF Turn on watchdog interval: 0 ms
 
-In Home Assistant under _Configuration_ → _Entities_ you should have a new switch with the same name you have specified ("Q7RF switch" in this example). In case you have disabled the automatic dashboard, add the switch to one of your dashboards. Find it and try toggling it. In the ESPHome log output you should see the component reacting:
+In Home Assistant under _Configuration_ → _Entities_ you should see a new switch with the same name you have specified ("Q7RF switch" in this example). In case you have disabled the automatic dashboard, add the switch to one of your dashboards. Find it and try toggling it. In the ESPHome log output you should see the component reacting:
 
-    [D][switch:021]: 'Q7RF switch' Turning ON.
-    [D][switch:045]: 'Q7RF switch': Sending state ON
-    [D][q7rf.switch:360]: Handling prioritized message: 0x01
-    [D][q7rf.switch:278]: Sending message: 0x01
+    [D][switch:x]: 'Q7RF switch' Turning ON.
+    [D][switch:x]: 'Q7RF switch': Sending state ON
+    [D][q7rf.switch:x]: Handling prioritized message.
+    [D][q7rf.switch:x]: Sending message: HEAT ON
 
 ## Pairing with the receiver
 
 In order to make the receiver recognize the transmitter, we need to execute the pairing process.
 
-Go to Home Assistant's _Developer tools_ → _Services_ and select the service `esphome.<node_name>_<switch_name>.pair`. Press and hold the M/A button on the receiver until it starts flashing green. Now press _Call service_ in the _Services_ page. The receiver should stop flashing, and the pairing is now complete. The receiver should react now if you try toggling the associated Home Assistant UI switch.
+Go to Home Assistant's _Developer tools_ → _Services_ and select the service `esphome.<NODE_NAME>_q7rf_pair`. Press and hold the M/A button on the receiver until it starts flashing green. Now press _Call service_ in the _Services_ page. The receiver should stop flashing, and the pairing is now complete. The receiver should react now if you try toggling the associated Home Assistant UI switch.
 
 If you wish to reset and use your original wireless thermostat, once again set the receiver into learning mode with the M/A button, then hold the SET + DAY button on your wireless thermostat until the blinking stops. The receiver only listens to the device currently paired.
 
