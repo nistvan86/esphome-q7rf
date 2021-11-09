@@ -30,7 +30,7 @@ Connections:
 
 ## ESPHome setup
 
-If you are not familiar with ESPHome and its integration with Home Assistant, please read it first in the [official manual](https://esphome.io/guides/getting_started_hassio.html).
+If you're not familiar with ESPHome and its integration with Home Assistant, please read the relevant section in the [official manual](https://esphome.io/guides/getting_started_hassio.html).
 
 Add this component using the following configuration in your node's yaml file:
 
@@ -52,13 +52,13 @@ Add this component using the following configuration in your node's yaml file:
       mosi_pin: D7
 
 Where:
-* `q7rf_device_id` (required): is a 16 bit transmitter specific ID and learnt by the receiver in the pairing process. If you operate multiple furnaces in the vicinity you must specify unique IDs for each transmitter. You can generate random identifiers with [random-hex](https://www.browserling.com/tools/random-hex) (use 4 digits).
+* `q7rf_device_id` (required): is a 16 bit transmitter specific ID and learnt by the receiver in the pairing process. If you operate multiple furnaces in the vicinity you must specify unique IDs for each transmitter. You can generate random identifiers for example with [random-hex](https://www.browserling.com/tools/random-hex) (use 4 digits).
 
 * `q7rf_resend_interval` (optional): specifies how often to repeat the last state in milliseconds. Since this is a simplex protocol, there's no response arriving from the receiver and we need to compensate for corrupt or lost messages by repeating them.
 
   Default is: 60000 ms (1 minute)
 
-* `q7rf_turn_on_watchdog_interval` (optional): specifies how long the furnace can stay turned on after the last `write_state` call arrived for the switch component in milliseconds. This can be used for example in conjunction with the `keep_alive` setting of Home Assistant's [generic thermostat](https://www.home-assistant.io/integrations/generic_thermostat/) component to add additional safe guards against the crash of HA and to prevent excessive heating costs.
+* `q7rf_turn_on_watchdog_interval` (optional): specifies how long the furnace can stay turned on after the last `write_state` call arrived for the switch component in milliseconds. This can be used for example in conjunction with the `keep_alive` setting of Home Assistant's [generic thermostat](https://www.home-assistant.io/integrations/generic_thermostat/) component to add an additional safe guard against the crash of HA and to prevent excessive heating costs.
 
   Default is: 0 ms (no watchdog).
 
@@ -91,13 +91,29 @@ In Home Assistant under _Configuration_ → _Entities_ you should see a new swit
 
 In order to make the receiver recognize the transmitter, we need to execute the pairing process.
 
-Go to Home Assistant's _Developer tools_ → _Services_ and select the service `esphome.<NODE_NAME>_q7rf_pair`. Press and hold the M/A button on the receiver until it starts flashing green. Now press _Call service_ in the _Services_ page. The receiver should stop flashing, and the pairing is now complete. The receiver should react now if you try toggling the associated Home Assistant UI switch.
+Go to Home Assistant's _Developer tools_ → _Services_ and select the service `esphome.<NODE_NAME>_q7rf_pair`. Press and hold the M/A button on the receiver until it starts flashing green. Now press _Call service_ in the _Services_ page. ESPHome log will show a similar output:
 
-If you wish to reset and use your original wireless thermostat, once again set the receiver into learning mode with the M/A button, then hold the SET + DAY button on your wireless thermostat until the blinking stops. The receiver only listens to the device currently paired.
+    [I][q7rf.switch:x]: Enqueued pairing.
+    [D][q7rf.switch:x]: Handling prioritized message.
+    [D][q7rf.switch:x]: Sent message: PAIR
+
+The receiver should stop flashing, and the pairing is now complete. Test if the associated Home Assistant switch controls the furnace correctly by manually toggling it.
 
 ## Usage example
 
 You can configure Home Assistant's [generic thermostat](https://www.home-assistant.io/integrations/generic_thermostat/) to control the furnace (use the new switch as the `heater`).
+
+## Q&A
+
+**How can I revert back to the bundled wireless thermostat?**
+
+Set the receiver into learning mode with the M/A button, then hold the SET + DAY button on your wireless thermostat until the blinking stops.
+
+**Can I use this simultaneously with the wireless thermostat the receiver came with?**
+
+No. Both transmitters should have their own device IDs. The receiver only listens to the currently paired device. Even if you manage to clone the wireless thermostat's ID, transmitters will not know about each other and switch the furnace in a hectic way (especially with the message repeating in place).
+
+Since the CC1101 is a transreceiver it would be possible to extend this project to allow pairing the wireless thermostat to this ESPHome component (using a separate device ID pair), then listen and forward it's messages. In my opinion the protocol is too limited to do anything useful with the original thermostat in a home automation environment: no temperature or scheduling is transmitted, only on/off signal is sent. It's better to replace it completely.
 
 ## Resources
 
