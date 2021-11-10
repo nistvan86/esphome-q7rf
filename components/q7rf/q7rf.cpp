@@ -15,9 +15,6 @@ static const uint8_t Q7RF_MSG_CMD_PAIR = 0x00;
 static const uint8_t Q7RF_MSG_CMD_TURN_ON_HEATING = 0xFF;
 static const uint8_t Q7RF_MSG_CMD_TURN_OFF_HEATING = 0x0F;
 
-static const uint8_t EXPECTED_CC1101_PARTNUM = 0;
-static const uint8_t EXPECTED_CC1101_VERSION = 0x14;
-
 static const uint8_t CMD_SRES = 0x30;
 static const uint8_t CMD_STX = 0x35;
 static const uint8_t CMD_SIDLE = 0x36;
@@ -79,6 +76,89 @@ static const uint8_t Q7RF_REG_CONFIG[] = {
 // 0xc0 = +12dB max power setting
 static const uint8_t Q7RF_PA_TABLE[] = {0x00, 0xc0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
 
+unsigned long elapsed(unsigned long since, unsigned long now) {
+  if (since > now) {
+    // millis() overflows every ~50 days
+    return (ULONG_MAX - since) + now;
+  } else {
+    return now - since;
+  }
+}
+
+uint8_t state_to_msg(bool state) { return state ? MSG_HEAT_ON : MSG_HEAT_OFF; }
+
+void encode_bits(uint16_t byte, uint8_t pad_to_length, char **dest) {
+  char binary[9];
+  itoa(byte, binary, 2);
+  int binary_len = strlen(binary);
+
+  if (binary_len < pad_to_length) {
+    for (int p = 0; p < pad_to_length - binary_len; p++) {
+      strncpy(*dest, Q7RF_ZERO_BIT_DATA, strlen(Q7RF_ZERO_BIT_DATA));
+      *dest += strlen(Q7RF_ZERO_BIT_DATA);
+    }
+  }
+
+  for (int b = 0; b < binary_len; b++) {
+    strncpy(*dest, binary[b] == '1' ? Q7RF_ONE_BIT_DATA : Q7RF_ZERO_BIT_DATA, strlen(Q7RF_ONE_BIT_DATA));
+    *dest += strlen(Q7RF_ZERO_BIT_DATA);
+  }
+}
+
+void compile_msg(uint16_t device_id, uint8_t cmd, uint8_t *msg) {
+  char binary_msg[360];
+  char *cursor = binary_msg;
+
+  // Preamble
+  char *preamble_start = cursor;
+  strncpy(cursor, Q7RF_PREAMBLE_DATA, strlen(Q7RF_PREAMBLE_DATA));
+  cursor += strlen(Q7RF_PREAMBLE_DATA);
+
+  char *payload_start = cursor;
+
+  // Command
+  encode_bits(device_id, 16, &cursor);
+  encode_bits(8, 4, &cursor);
+  encode_bits(cmd, 8, &cursor);
+
+  // Repeat the command once more
+  strncpy(cursor, payload_start, cursor - payload_start);
+  cursor += cursor - payload_start;
+
+  // Add a gap
+  strncpy(cursor, Q7RF_GAP_DATA, strlen(Q7RF_GAP_DATA));
+  cursor += strlen(Q7RF_GAP_DATA);
+
+  // Repeat the whole burst
+  strncpy(cursor, preamble_start, cursor - preamble_start);
+  cursor += cursor - preamble_start;
+
+  // Convert msg to bytes
+  cursor = binary_msg;  // Reset cursor
+  uint8_t *cursor_msg = msg;
+  char binary_byte[9];
+  binary_byte[8] = '\0';
+  for (int b = 0; b < 45; b++) {
+    strncpy(binary_byte, cursor, 8);
+    cursor += 8;
+    *cursor_msg = strtoul(binary_byte, 0, 2);
+    cursor_msg++;
+  }
+
+#if ESPHOME_LOG_LEVEL >= ESPHOME_LOG_LEVEL_VERBOSE
+  // Assemble debug print
+  char debug[91];
+  cursor = debug;
+  cursor_msg = msg;
+  for (int b = 0; b < 45; b++) {
+    sprintf(cursor, "%x", *cursor_msg);
+    cursor += 2;
+    cursor_msg++;
+  }
+  ESP_LOGV(TAG, "Encoded msg: 0x%02x as 0x%s", cmd, debug);
+#endif
+}
+
 bool Q7RFSwitch::reset_cc() {
   // Chip reset sequence. CS wiggle (CC1101 manual page 45)
   this->disable();
@@ -98,12 +178,7 @@ bool Q7RFSwitch::reset_cc() {
   uint8_t version;
   this->read_cc_register(REG_VERSION, &version);
 
-  if (partnum != EXPECTED_CC1101_PARTNUM || version != EXPECTED_CC1101_VERSION) {
-    ESP_LOGE(TAG, "Invalid CC1101 partnum: %02x and/or version: %02x.", partnum, version);
-    return false;
-  }
-
-  ESP_LOGD(TAG, "CC1101 found with partnum: %02x and version: %02x", partnum, version);
+  ESP_LOGI(TAG, "CC1101 found with partnum: %02x and version: %02x", partnum, version);
 
   // Setup config registers
   uint8_t verify_value;
@@ -115,7 +190,9 @@ bool Q7RFSwitch::reset_cc() {
                Q7RF_REG_CONFIG[i + 1], verify_value);
       return false;
     }
-    ESP_LOGD(TAG, "Written CC1101 config register. reg: %02x value: %02x", Q7RF_REG_CONFIG[i], Q7RF_REG_CONFIG[i + 1]);
+#if ESPHOME_LOG_LEVEL >= ESPHOME_LOG_LEVEL_VERBOSE
+    ESP_LOGV(TAG, "Written CC1101 config register. reg: %02x value: %02x", Q7RF_REG_CONFIG[i], Q7RF_REG_CONFIG[i + 1]);
+#endif
   }
 
   // Write PATable
@@ -138,7 +215,9 @@ bool Q7RFSwitch::reset_cc() {
       ESP_LOGE(TAG, "Failed to write CC1101 PATABLE.");
       return false;
     }
-    ESP_LOGD(TAG, "Written CC1101 PATABLE[%d]: %02x", i, Q7RF_PA_TABLE[i]);
+#if ESPHOME_LOG_LEVEL >= ESPHOME_LOG_LEVEL_VERBOSE
+    ESP_LOGV(TAG, "Written CC1101 PATABLE[%d]: %02x", i, Q7RF_PA_TABLE[i]);
+#endif
   }
 
   return true;
@@ -169,78 +248,6 @@ void Q7RFSwitch::write_cc_register(uint8_t reg, uint8_t *value, size_t length) {
 void Q7RFSwitch::write_cc_config_register(uint8_t reg, uint8_t value) {
   uint8_t arr[1] = {value};
   this->write_cc_register(reg, arr, 1);
-}
-
-void Q7RFSwitch::encode_bits(uint16_t byte, uint8_t pad_to_length, char **dest) {
-  char binary[9];
-  itoa(byte, binary, 2);
-  int binary_len = strlen(binary);
-
-  if (binary_len < pad_to_length) {
-    for (int p = 0; p < pad_to_length - binary_len; p++) {
-      strncpy(*dest, Q7RF_ZERO_BIT_DATA, strlen(Q7RF_ZERO_BIT_DATA));
-      *dest += strlen(Q7RF_ZERO_BIT_DATA);
-    }
-  }
-
-  for (int b = 0; b < binary_len; b++) {
-    strncpy(*dest, binary[b] == '1' ? Q7RF_ONE_BIT_DATA : Q7RF_ZERO_BIT_DATA, strlen(Q7RF_ONE_BIT_DATA));
-    *dest += strlen(Q7RF_ZERO_BIT_DATA);
-  }
-}
-
-void Q7RFSwitch::get_msg(uint8_t cmd, uint8_t *msg) {
-  char binary_msg[360];
-  char *cursor = binary_msg;
-
-  // Preamble
-  char *preamble_start = cursor;
-  strncpy(cursor, Q7RF_PREAMBLE_DATA, strlen(Q7RF_PREAMBLE_DATA));
-  cursor += strlen(Q7RF_PREAMBLE_DATA);
-
-  char *payload_start = cursor;
-
-  // Command
-  this->encode_bits(this->q7rf_device_id_, 16, &cursor);
-  this->encode_bits(8, 4, &cursor);
-  this->encode_bits(cmd, 8, &cursor);
-
-  // Repeat the command once more
-  strncpy(cursor, payload_start, cursor - payload_start);
-  cursor += cursor - payload_start;
-
-  // Add a gap
-  strncpy(cursor, Q7RF_GAP_DATA, strlen(Q7RF_GAP_DATA));
-  cursor += strlen(Q7RF_GAP_DATA);
-
-  // Repeat the whole burst
-  strncpy(cursor, preamble_start, cursor - preamble_start);
-  cursor += cursor - preamble_start;
-
-  // Convert msg to bytes
-  cursor = binary_msg;  // Reset cursor
-  uint8_t *cursor_msg = msg;
-  char binary_byte[9];
-  binary_byte[8] = '\0';
-  for (int b = 0; b < 45; b++) {
-    strncpy(binary_byte, cursor, 8);
-    cursor += 8;
-    *cursor_msg = strtoul(binary_byte, 0, 2);
-    cursor_msg++;
-  }
-
-#if ESPHOME_LOG_LEVEL >= ESPHOME_LOG_LEVEL_DEBUG
-  // Assemble debug print
-  char debug[91];
-  cursor = debug;
-  cursor_msg = msg;
-  for (int b = 0; b < 45; b++) {
-    sprintf(cursor, "%x", *cursor_msg);
-    cursor += 2;
-    cursor_msg++;
-  }
-  ESP_LOGD(TAG, "Encoded msg: 0x%02x as 0x%s", cmd, debug);
-#endif
 }
 
 bool Q7RFSwitch::send_cc_data(const uint8_t *data, size_t length) {
@@ -277,19 +284,25 @@ bool Q7RFSwitch::send_msg(uint8_t msg) {
   if (msg == MSG_NONE)
     return false;
 
-  ESP_LOGD(TAG, "Sending message: 0x%02x", msg);
-
   bool result = false;
+  const char *text_msg = NULL;
   switch (msg) {
     case MSG_HEAT_ON:
       result = this->send_cc_data(this->msg_heat_on_, sizeof(this->msg_heat_on_));
+      text_msg = "HEAT ON";
       break;
     case MSG_HEAT_OFF:
       result = this->send_cc_data(this->msg_heat_off_, sizeof(this->msg_heat_off_));
+      text_msg = "HEAT OFF";
       break;
     case MSG_PAIR:
       result = this->send_cc_data(this->msg_pair_, sizeof(this->msg_pair_));
+      text_msg = "PAIR";
       break;
+  }
+
+  if (text_msg) {
+    ESP_LOGD(TAG, "Sent message: %s", text_msg);
   }
 
   if (result) {
@@ -306,28 +319,30 @@ bool Q7RFSwitch::send_msg(uint8_t msg) {
   return result;
 }
 
+void Q7RFSwitch::set_state(bool state) {
+  this->state_ = state;
+  this->publish_state(state);
+}
+
 void Q7RFSwitch::setup() {
   // Revert switch to off state
-  this->state_ = false;
-  this->publish_state(this->state_);
+  this->set_state(false);
+
+  // Compile messages
+  compile_msg(this->q7rf_device_id_, Q7RF_MSG_CMD_PAIR, this->msg_pair_);
+  compile_msg(this->q7rf_device_id_, Q7RF_MSG_CMD_TURN_ON_HEATING, this->msg_heat_on_);
+  compile_msg(this->q7rf_device_id_, Q7RF_MSG_CMD_TURN_OFF_HEATING, this->msg_heat_off_);
+
+  // Register the pairing service
+  register_service(&Q7RFSwitch::on_pairing, "q7rf_pair");
 
   this->spi_setup();
   if (this->reset_cc()) {
-    ESP_LOGI(TAG, "CC1101 reset successful.");
+    ESP_LOGI(TAG, "CC1101 initialized.");
   } else {
     ESP_LOGE(TAG, "Failed to reset CC1101 modem. Check connection.");
     return;
   }
-
-  ESP_LOGD(TAG, "Q7RF Device ID is: 0x%04x", this->q7rf_device_id_);
-
-  // Compile messages
-  this->get_msg(Q7RF_MSG_CMD_PAIR, this->msg_pair_);
-  this->get_msg(Q7RF_MSG_CMD_TURN_ON_HEATING, this->msg_heat_on_);
-  this->get_msg(Q7RF_MSG_CMD_TURN_OFF_HEATING, this->msg_heat_off_);
-
-  // Register the pairing service
-  register_service(&Q7RFSwitch::on_pairing, this->get_name() + "_pair");
 
   this->initialized_ = true;
 }
@@ -340,10 +355,15 @@ void Q7RFSwitch::on_pairing() {
 }
 
 void Q7RFSwitch::write_state(bool state) {
-  if (this->initialized_ && this->state_ != state) {
-    this->state_ = state;
-    this->pending_msg_ = state ? MSG_HEAT_ON : MSG_HEAT_OFF;
-    this->publish_state(state);
+  if (this->initialized_) {
+    if (state) {
+      this->last_turn_on_time_ = millis();
+    }
+
+    if (this->state_ != state) {
+      this->set_state(state);
+      this->pending_msg_ = state_to_msg(state);
+    }
   }
 }
 
@@ -352,30 +372,31 @@ void Q7RFSwitch::dump_config() {
   LOG_PIN("  CC1101 CS Pin: ", this->cs_);
   ESP_LOGCONFIG(TAG, "  Q7RF Device ID: 0x%04x", this->q7rf_device_id_);
   ESP_LOGCONFIG(TAG, "  Q7RF Resend interval: %d ms", this->q7rf_resend_interval_);
+  ESP_LOGCONFIG(TAG, "  Q7RF Turn on watchdog interval: %d ms", this->q7rf_turn_on_watchdog_interval_);
 }
 
 void Q7RFSwitch::update() {
   if (this->initialized_) {
     if (this->pending_msg_ != MSG_NONE) {
-      ESP_LOGD(TAG, "Handling prioritized message: 0x%02x", this->pending_msg_);
+      ESP_LOGD(TAG, "Handling prioritized message.");
       // Send prioritized message
       this->send_msg(this->pending_msg_);
       this->pending_msg_ = MSG_NONE;
     } else {
       unsigned long now = millis();
-      unsigned long diff = 0UL;
 
-      if (this->last_msg_time_ > now) {
-        // millis() overflows every ~50 days
-        diff = (ULONG_MAX - this->last_msg_time_) + now;
-      } else {
-        diff = now - this->last_msg_time_;
+      if (this->state_ && this->q7rf_turn_on_watchdog_interval_ > 0 &&
+          elapsed(this->last_turn_on_time_, now) > this->q7rf_turn_on_watchdog_interval_) {
+        ESP_LOGD(TAG, "Turn on watch dog triggered, turning off furnace.");
+        this->set_state(false);
+        this->send_msg(MSG_HEAT_OFF);
+        return;
       }
 
       // Check if we have to resend current state by now
-      if (diff > this->q7rf_resend_interval_) {
-        ESP_LOGD(TAG, "Repeating last state.");
-        uint8_t msg = this->state_ ? MSG_HEAT_ON : MSG_HEAT_OFF;
+      if (elapsed(this->last_msg_time_, now) > this->q7rf_resend_interval_) {
+        ESP_LOGD(TAG, "Resending last state.");
+        uint8_t msg = state_to_msg(this->state_);
         this->send_msg(msg);
       }
     }
@@ -384,7 +405,11 @@ void Q7RFSwitch::update() {
 
 void Q7RFSwitch::set_q7rf_device_id(uint16_t id) { this->q7rf_device_id_ = id; }
 
-void Q7RFSwitch::set_q7rf_resend_interval(uint16_t interval) { this->q7rf_resend_interval_ = interval; }
+void Q7RFSwitch::set_q7rf_resend_interval(uint32_t interval) { this->q7rf_resend_interval_ = interval; }
+
+void Q7RFSwitch::set_q7rf_turn_on_watchdog_interval(uint32_t interval) {
+  this->q7rf_turn_on_watchdog_interval_ = interval;
+}
 
 }  // namespace q7rf
 }  // namespace esphome
