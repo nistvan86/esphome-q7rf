@@ -11,11 +11,11 @@ CONF_Q7RF_RESEND_INTERVAL = "q7rf_resend_interval"
 CONF_Q7RF_TURN_ON_WATCHDOG_INTERVAL = "q7rf_turn_on_watchdog_interval"
 
 q7rf_ns = cg.esphome_ns.namespace("q7rf")
-Q7RF_SWITCH = q7rf_ns.class_("Q7RFSwitch", switch.Switch, cg.Component, spi.SPIDevice)
+Q7RFSwitch = q7rf_ns.class_("Q7RFSwitch", switch.Switch, cg.PollingComponent, spi.SPIDevice)
 
 CONFIG_SCHEMA = (
-    switch.SWITCH_SCHEMA.extend({cv.GenerateID(): cv.declare_id(Q7RF_SWITCH)})
-    .extend(cv.COMPONENT_SCHEMA)
+    switch.switch_schema(Q7RFSwitch)
+    .extend(cv.polling_component_schema("1s"))
     .extend(spi.spi_device_schema(cs_pin_required=True))
     .extend(
         cv.Schema(

@@ -94,13 +94,13 @@ void encode_bits(uint16_t byte, uint8_t pad_to_length, char **dest) {
 
   if (binary_len < pad_to_length) {
     for (int p = 0; p < pad_to_length - binary_len; p++) {
-      strncpy(*dest, Q7RF_ZERO_BIT_DATA, strlen(Q7RF_ZERO_BIT_DATA));
+      memcpy(*dest, Q7RF_ZERO_BIT_DATA, strlen(Q7RF_ZERO_BIT_DATA));
       *dest += strlen(Q7RF_ZERO_BIT_DATA);
     }
   }
 
   for (int b = 0; b < binary_len; b++) {
-    strncpy(*dest, binary[b] == '1' ? Q7RF_ONE_BIT_DATA : Q7RF_ZERO_BIT_DATA, strlen(Q7RF_ONE_BIT_DATA));
+    memcpy(*dest, binary[b] == '1' ? Q7RF_ONE_BIT_DATA : Q7RF_ZERO_BIT_DATA, strlen(Q7RF_ONE_BIT_DATA));
     *dest += strlen(Q7RF_ZERO_BIT_DATA);
   }
 }
@@ -111,7 +111,7 @@ void compile_msg(uint16_t device_id, uint8_t cmd, uint8_t *msg) {
 
   // Preamble
   char *preamble_start = cursor;
-  strncpy(cursor, Q7RF_PREAMBLE_DATA, strlen(Q7RF_PREAMBLE_DATA));
+  memcpy(cursor, Q7RF_PREAMBLE_DATA, strlen(Q7RF_PREAMBLE_DATA));
   cursor += strlen(Q7RF_PREAMBLE_DATA);
 
   char *payload_start = cursor;
@@ -122,15 +122,15 @@ void compile_msg(uint16_t device_id, uint8_t cmd, uint8_t *msg) {
   encode_bits(cmd, 8, &cursor);
 
   // Repeat the command once more
-  strncpy(cursor, payload_start, cursor - payload_start);
+  memcpy(cursor, payload_start, cursor - payload_start);
   cursor += cursor - payload_start;
 
   // Add a gap
-  strncpy(cursor, Q7RF_GAP_DATA, strlen(Q7RF_GAP_DATA));
+  memcpy(cursor, Q7RF_GAP_DATA, strlen(Q7RF_GAP_DATA));
   cursor += strlen(Q7RF_GAP_DATA);
 
   // Repeat the whole burst
-  strncpy(cursor, preamble_start, cursor - preamble_start);
+  memcpy(cursor, preamble_start, cursor - preamble_start);
   cursor += cursor - preamble_start;
 
   // Convert msg to bytes
