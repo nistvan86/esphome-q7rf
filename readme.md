@@ -83,7 +83,7 @@ During configuration print:
     [C][q7rf.switch:x]:   Q7RF Resend interval: 60000 ms
     [C][q7rf.switch:x]:   Q7RF Turn on watchdog interval: 0 ms
 
-In Home Assistant under _Configuration_ → _Entities_ you should see a new switch with the same name you have specified ("Q7RF switch" in this example). In case you have disabled the automatic dashboard, add the switch to one of your dashboards. Find it and try toggling it. In the ESPHome log output you should see the component reacting:
+In Home Assistant under _Settings_ → _Entities_ you should see a new switch with the same name you have specified ("Q7RF switch" in this example). In case you have disabled the automatic dashboard, add the switch to one of your dashboards. Find it and try toggling it. In the ESPHome log output you should see the component reacting:
 
     [D][switch:x]: 'Q7RF switch' Turning ON.
     [D][switch:x]: 'Q7RF switch': Sending state ON
@@ -94,7 +94,7 @@ In Home Assistant under _Configuration_ → _Entities_ you should see a new swit
 
 In order to make the receiver recognize the transmitter, we need to execute the pairing process.
 
-Go to Home Assistant's _Developer tools_ → _Actions_ and select the service `esphome.<NODE_NAME>_q7rf_pair`. Press and hold the M/A button on the receiver until it starts flashing green. Now press _Call service_ in the _Services_ page. ESPHome log will show a similar output:
+Go to Home Assistant's _Developer tools_ → _Actions_ and select the service `esphome.<NODE_NAME>_q7rf_pair`. Press and hold the M/A button on the receiver until it starts flashing green. Now press _Perform action_ in the _Actions_ page. ESPHome log will show a similar output:
 
     [I][q7rf.switch:x]: Enqueued pairing.
     [D][q7rf.switch:x]: Handling prioritized message.
