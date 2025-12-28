@@ -4,7 +4,7 @@ This is an ESPHome custom component which allows you to control a Computherm/Del
 
 I've tested this project with an ESP8266 module (NodeMCU). It should work with the ESP32 as well, since protocol timing critical part is done by the CC1101 modem.
 
-Current tested compatible ESPHome version: v2021.10.3
+Current tested compatible ESPHome version: v2025.12.2
 
 **Use this project at your own risk. Reporting and/or fixing issues is always welcome.**
 
@@ -51,6 +51,9 @@ Add this component using the following configuration in your node's yaml file:
       miso_pin: D6
       mosi_pin: D7
 
+    api:
+	  custom_services: true
+
 Where:
 * `q7rf_device_id` (required): is a 16 bit transmitter specific ID and learnt by the receiver in the pairing process. If you operate multiple furnaces in the vicinity you must specify unique IDs for each transmitter. You can generate random identifiers for example with [random-hex](https://www.browserling.com/tools/random-hex) (use 4 digits).
 
@@ -91,7 +94,7 @@ In Home Assistant under _Configuration_ → _Entities_ you should see a new swit
 
 In order to make the receiver recognize the transmitter, we need to execute the pairing process.
 
-Go to Home Assistant's _Developer tools_ → _Services_ and select the service `esphome.<NODE_NAME>_q7rf_pair`. Press and hold the M/A button on the receiver until it starts flashing green. Now press _Call service_ in the _Services_ page. ESPHome log will show a similar output:
+Go to Home Assistant's _Developer tools_ → _Actions_ and select the service `esphome.<NODE_NAME>_q7rf_pair`. Press and hold the M/A button on the receiver until it starts flashing green. Now press _Call service_ in the _Services_ page. ESPHome log will show a similar output:
 
     [I][q7rf.switch:x]: Enqueued pairing.
     [D][q7rf.switch:x]: Handling prioritized message.
