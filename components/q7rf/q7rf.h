@@ -17,7 +17,7 @@ class Q7RFSwitch : public switch_::Switch,
                    public api::CustomAPIDevice,
                    public PollingComponent,
                    public spi::SPIDevice<spi::BIT_ORDER_MSB_FIRST, spi::CLOCK_POLARITY_LOW, spi::CLOCK_PHASE_LEADING,
-                                         spi::DATA_RATE_1KHZ> {
+                                         spi::DATA_RATE_1MHZ> {
  protected:
   uint16_t q7rf_device_id_ = 0;
   uint32_t q7rf_resend_interval_ = 60000;
@@ -29,6 +29,12 @@ class Q7RFSwitch : public switch_::Switch,
   uint8_t msg_heat_off_[45];
   bool state_ = false;
   uint8_t pending_msg_ = MSG_NONE;
+  uint8_t pending_msg_repetitions_ = 0;
+  uint8_t active_msg_ = MSG_NONE;
+  uint8_t tx_attempts_ = 0;
+  bool tx_in_progress_ = false;
+  unsigned long tx_started_time_ = 0;
+  unsigned long last_tx_finish_time_ = 0;
   unsigned long last_msg_time_ = 0;
   unsigned long last_turn_on_time_ = 0;
   uint8_t msg_errors_ = 0;
@@ -40,14 +46,17 @@ class Q7RFSwitch : public switch_::Switch,
   void read_cc_config_register(uint8_t reg, uint8_t *value);
   void write_cc_register(uint8_t reg, uint8_t *value, size_t length);
   void write_cc_config_register(uint8_t reg, uint8_t value);
-  bool send_cc_data(const uint8_t *data, size_t length);
+  void start_cc_data(const uint8_t *data, size_t length);
 
-  bool send_msg(uint8_t msg);
+  bool start_msg(uint8_t msg);
+  void finish_msg(bool success);
+  void enqueue_msg(uint8_t msg);
   void set_state(bool state);
 
  public:
   Q7RFSwitch() : PollingComponent(1000) {}
   void setup() override;
+  void loop() override;
   void write_state(bool state) override;
   void dump_config() override;
   void update() override;

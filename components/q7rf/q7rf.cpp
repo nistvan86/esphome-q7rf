@@ -46,20 +46,25 @@ static const uint8_t CREG_PATABLE_BURST_WRITE = 0x7e;
 static const uint8_t CREG_PATABLE_BURST_READ = 0xfe;
 static const uint8_t CFIFO_TX_BURST = 0x7f;
 
-static const uint8_t MARCSTATE_TX = 0x13;
-static const uint8_t MARCSTATE_TX_END = 0x14;
-static const uint8_t MARCSTATE_RXTX_SWITCH = 0x15;
+static const uint8_t MARCSTATE_IDLE = 0x01;
+static const uint8_t MARCSTATE_TXFIFO_UNDERFLOW = 0x16;
 
 static const uint8_t MSG_SEND_ERRORS_RESET_LIMIT = 3;
+// One compiled packet contains two complete RF bursts. Four packet
+// transmissions therefore produce eight bursts, similar to the thermostat.
+static const uint8_t Q7RF_PACKET_REPETITIONS = 4;
+static const uint32_t Q7RF_TX_MIN_DURATION = 60;
+static const uint32_t Q7RF_TX_TIMEOUT = 150;
+static const uint32_t Q7RF_TX_GAP = 10;
 
 /* Each symbol takes 220us. Computherm/Delta Q7RF uses PWM modulation.
    Every data bit is encoded as 3 bit inside the buffer.
    001 = 1, 011 = 0, 111000111 = preamble */
 static const uint8_t Q7RF_REG_CONFIG[] = {
     CREG_FIFOTHR,  0x00,  // TX FIFO length = 61, others default
-    CREG_PKTLEN,   0x3d,  // 61 byte packets
+    CREG_PKTLEN,   0x2d,  // 45 byte fixed-length packets
     CREG_PKTCTRL1, 0x00,  // Disable RSSI/LQ payload sending, no address check
-    CREG_PKTCTRL0, 0x01,  // variable packet length, no CRC calculation
+    CREG_PKTCTRL0, 0x00,  // fixed packet length, no CRC calculation
     CREG_FREQ2,    0x21,  // FREQ2, FREQ=0x216544 => 2.188.612 * (26 MHz OSC / 2^16) ~= 868.285 MHz
     CREG_FREQ1,    0x65,  // ^FREQ1
     CREG_FREQ0,    0x44,  // ^FREQ0
@@ -77,12 +82,8 @@ static const uint8_t Q7RF_REG_CONFIG[] = {
 static const uint8_t Q7RF_PA_TABLE[] = {0x00, 0xc0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
 
 unsigned long elapsed(unsigned long since, unsigned long now) {
-  if (since > now) {
-    // millis() overflows every ~50 days
-    return (ULONG_MAX - since) + now;
-  } else {
-    return now - since;
-  }
+  // Unsigned subtraction handles millis() rollover correctly.
+  return now - since;
 }
 
 uint8_t state_to_msg(bool state) { return state ? MSG_HEAT_ON : MSG_HEAT_OFF; }
@@ -168,7 +169,14 @@ bool Q7RFSwitch::reset_cc() {
   this->disable();
   delayMicroseconds(41);
 
-  this->send_cc_cmd(CMD_SRES);
+  // ESPHome's SPIDevice does not expose MISO for the datasheet's CHIP_RDYn
+  // polling sequence. Keep CS asserted and use conservative delays around
+  // SRES so this remains reliable after increasing the SPI clock.
+  this->enable();
+  delayMicroseconds(1000);
+  this->transfer_byte(CMD_SRES);
+  delayMicroseconds(1000);
+  this->disable();
   ESP_LOGD(TAG, "Issued CC1101 reset sequence.");
 
   // Read part number and version
@@ -250,73 +258,96 @@ void Q7RFSwitch::write_cc_config_register(uint8_t reg, uint8_t value) {
   this->write_cc_register(reg, arr, 1);
 }
 
-bool Q7RFSwitch::send_cc_data(const uint8_t *data, size_t length) {
-  uint8_t buffer[length];
-  for (int i = 0; i < length; i++) {
-    buffer[i] = *data;
-    data++;
-  }
-
+void Q7RFSwitch::start_cc_data(const uint8_t *data, size_t length) {
   this->send_cc_cmd(CMD_SIDLE);
   this->send_cc_cmd(CMD_SFRX);
   this->send_cc_cmd(CMD_SFTX);
 
   this->enable();
   this->write_byte(CFIFO_TX_BURST);
-  this->write_array(buffer, length);
+  this->write_array(data, length);
   this->disable();
 
   this->send_cc_cmd(CMD_STX);
-
-  uint8_t state;
-  this->read_cc_register(SREG_MARCSTATE, &state);
-  state &= 0x1f;
-  if (state != MARCSTATE_TX && state != MARCSTATE_TX_END && state != MARCSTATE_RXTX_SWITCH) {
-    ESP_LOGE(TAG, "CC1101 in invalid state after sending, returning to idle. State: 0x%02x", state);
-    this->send_cc_cmd(CMD_SIDLE);
-    return false;
-  }
-
-  return true;
+  this->tx_started_time_ = millis();
+  this->tx_in_progress_ = true;
 }
 
-bool Q7RFSwitch::send_msg(uint8_t msg) {
+bool Q7RFSwitch::start_msg(uint8_t msg) {
   if (msg == MSG_NONE)
     return false;
 
-  bool result = false;
   const char *text_msg = NULL;
   switch (msg) {
     case MSG_HEAT_ON:
-      result = this->send_cc_data(this->msg_heat_on_, sizeof(this->msg_heat_on_));
+      this->start_cc_data(this->msg_heat_on_, sizeof(this->msg_heat_on_));
       text_msg = "HEAT ON";
       break;
     case MSG_HEAT_OFF:
-      result = this->send_cc_data(this->msg_heat_off_, sizeof(this->msg_heat_off_));
+      this->start_cc_data(this->msg_heat_off_, sizeof(this->msg_heat_off_));
       text_msg = "HEAT OFF";
       break;
     case MSG_PAIR:
-      result = this->send_cc_data(this->msg_pair_, sizeof(this->msg_pair_));
+      this->start_cc_data(this->msg_pair_, sizeof(this->msg_pair_));
       text_msg = "PAIR";
       break;
+    default:
+      return false;
   }
 
-  if (text_msg) {
-    ESP_LOGD(TAG, "Sent message: %s", text_msg);
-  }
+  this->active_msg_ = msg;
+  ESP_LOGD(TAG, "Started transmission: %s", text_msg);
+  return true;
+}
 
-  if (result) {
+void Q7RFSwitch::finish_msg(bool success) {
+  uint8_t finished_msg = this->active_msg_;
+  this->tx_in_progress_ = false;
+  this->active_msg_ = MSG_NONE;
+  this->last_tx_finish_time_ = millis();
+
+  if (success) {
     this->last_msg_time_ = millis();
+    this->msg_errors_ = 0;
+    this->tx_attempts_ = 0;
+
+    // A newer command may have replaced the one that just completed.
+    if (this->pending_msg_ == finished_msg && this->pending_msg_repetitions_ > 0 &&
+        --this->pending_msg_repetitions_ == 0) {
+      this->pending_msg_ = MSG_NONE;
+    }
   } else {
     this->msg_errors_++;
+    if (this->pending_msg_ == finished_msg) {
+      this->tx_attempts_++;
+    } else {
+      this->tx_attempts_ = 0;
+    }
+    this->send_cc_cmd(CMD_SIDLE);
+    this->send_cc_cmd(CMD_SFTX);
+
     if (this->msg_errors_ >= MSG_SEND_ERRORS_RESET_LIMIT) {
-      ESP_LOGE(TAG, "Multiple message send errors occured, forcing CC1101 reset.");
-      this->reset_cc();
+      ESP_LOGE(TAG, "Multiple message send errors occurred, forcing CC1101 reset.");
+      if (!this->reset_cc()) {
+        ESP_LOGE(TAG, "Failed to recover CC1101 modem.");
+        this->initialized_ = false;
+      }
       this->msg_errors_ = 0;
     }
-  }
 
-  return result;
+    if (this->tx_attempts_ >= MSG_SEND_ERRORS_RESET_LIMIT && this->pending_msg_ == finished_msg) {
+      ESP_LOGE(TAG, "Dropping message after repeated transmission failures.");
+      this->pending_msg_ = MSG_NONE;
+      this->pending_msg_repetitions_ = 0;
+      this->tx_attempts_ = 0;
+    }
+  }
+}
+
+void Q7RFSwitch::enqueue_msg(uint8_t msg) {
+  this->pending_msg_ = msg;
+  this->pending_msg_repetitions_ = Q7RF_PACKET_REPETITIONS;
+  this->tx_attempts_ = 0;
 }
 
 void Q7RFSwitch::set_state(bool state) {
@@ -347,9 +378,42 @@ void Q7RFSwitch::setup() {
   this->initialized_ = true;
 }
 
+void Q7RFSwitch::loop() {
+  if (!this->initialized_)
+    return;
+
+  unsigned long now = millis();
+
+  if (this->tx_in_progress_) {
+    uint8_t state;
+    this->read_cc_register(SREG_MARCSTATE, &state);
+    state &= 0x1f;
+
+    if (state == MARCSTATE_TXFIFO_UNDERFLOW) {
+      ESP_LOGW(TAG, "CC1101 TX FIFO underflow.");
+      this->finish_msg(false);
+    } else if (state == MARCSTATE_IDLE) {
+      if (elapsed(this->tx_started_time_, now) >= Q7RF_TX_MIN_DURATION) {
+        this->finish_msg(true);
+      } else {
+        ESP_LOGW(TAG, "CC1101 returned to IDLE before a complete packet was transmitted.");
+        this->finish_msg(false);
+      }
+    } else if (elapsed(this->tx_started_time_, now) > Q7RF_TX_TIMEOUT) {
+      ESP_LOGW(TAG, "CC1101 transmission timed out in state 0x%02x.", state);
+      this->finish_msg(false);
+    }
+    return;
+  }
+
+  if (this->pending_msg_ != MSG_NONE && elapsed(this->last_tx_finish_time_, now) >= Q7RF_TX_GAP) {
+    this->start_msg(this->pending_msg_);
+  }
+}
+
 void Q7RFSwitch::on_pairing() {
   if (this->initialized_) {
-    this->pending_msg_ = MSG_PAIR;
+    this->enqueue_msg(MSG_PAIR);
     ESP_LOGI(TAG, "Enqueued pairing.");
   }
 }
@@ -362,7 +426,7 @@ void Q7RFSwitch::write_state(bool state) {
 
     if (this->state_ != state) {
       this->set_state(state);
-      this->pending_msg_ = state_to_msg(state);
+      this->enqueue_msg(state_to_msg(state));
     }
   }
 }
@@ -376,30 +440,24 @@ void Q7RFSwitch::dump_config() {
 }
 
 void Q7RFSwitch::update() {
-  if (this->initialized_) {
-    if (this->pending_msg_ != MSG_NONE) {
-      ESP_LOGD(TAG, "Handling prioritized message.");
-      // Send prioritized message
-      this->send_msg(this->pending_msg_);
-      this->pending_msg_ = MSG_NONE;
-    } else {
-      unsigned long now = millis();
+  if (!this->initialized_)
+    return;
 
-      if (this->state_ && this->q7rf_turn_on_watchdog_interval_ > 0 &&
-          elapsed(this->last_turn_on_time_, now) > this->q7rf_turn_on_watchdog_interval_) {
-        ESP_LOGD(TAG, "Turn on watch dog triggered, turning off furnace.");
-        this->set_state(false);
-        this->send_msg(MSG_HEAT_OFF);
-        return;
-      }
+  unsigned long now = millis();
 
-      // Check if we have to resend current state by now
-      if (elapsed(this->last_msg_time_, now) > this->q7rf_resend_interval_) {
-        ESP_LOGD(TAG, "Resending last state.");
-        uint8_t msg = state_to_msg(this->state_);
-        this->send_msg(msg);
-      }
-    }
+  if (this->state_ && this->q7rf_turn_on_watchdog_interval_ > 0 &&
+      elapsed(this->last_turn_on_time_, now) > this->q7rf_turn_on_watchdog_interval_) {
+    ESP_LOGD(TAG, "Turn on watch dog triggered, turning off furnace.");
+    this->set_state(false);
+    this->enqueue_msg(MSG_HEAT_OFF);
+    return;
+  }
+
+  // Do not replace a command whose repetitions are still being transmitted.
+  if (this->pending_msg_ == MSG_NONE && !this->tx_in_progress_ &&
+      elapsed(this->last_msg_time_, now) > this->q7rf_resend_interval_) {
+    ESP_LOGD(TAG, "Resending last state.");
+    this->enqueue_msg(state_to_msg(this->state_));
   }
 }
 
